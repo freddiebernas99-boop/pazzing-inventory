@@ -123,15 +123,26 @@
 
     function getSession() {
         try {
+            if (activeTabSession?.accessToken) {
+                return activeTabSession;
+            }
+            if (typeof sessionStorage !== 'undefined' && typeof sessionStorage.getItem === 'function') {
+                const rawTab = sessionStorage.getItem(SESSION_KEY);
+                if (rawTab) {
+                    const parsedTab = JSON.parse(rawTab);
+                    if (parsedTab?.accessToken) {
+                        activeTabSession = parsedTab;
+                        return parsedTab;
+                    }
+                }
+            }
             const rawLocal = localStorage.getItem(SESSION_KEY);
             if (!rawLocal) {
                 activeTabSession = null;
                 return null;
             }
             const parsedLocal = JSON.parse(rawLocal);
-            if (activeTabSession?.accessToken) {
-                return activeTabSession;
-            }
+            activeTabSession = parsedLocal;
             return parsedLocal;
         } catch (error) {
             localStorage.removeItem(SESSION_KEY);
@@ -142,11 +153,21 @@
 
     function saveSession(session) {
         activeTabSession = session ? { ...session } : null;
+        if (typeof sessionStorage !== 'undefined' && typeof sessionStorage.setItem === 'function') {
+            try {
+                sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+            } catch (e) {}
+        }
         localStorage.setItem(SESSION_KEY, JSON.stringify(session));
     }
 
     function clearSession() {
         activeTabSession = null;
+        if (typeof sessionStorage !== 'undefined' && typeof sessionStorage.removeItem === 'function') {
+            try {
+                sessionStorage.removeItem(SESSION_KEY);
+            } catch (e) {}
+        }
         localStorage.removeItem(SESSION_KEY);
         localStorage.removeItem('pazings_session_user');
     }
@@ -161,8 +182,8 @@
         }
     }
 
-    function notifyDataChanged(kind = 'data') {
-        const msg = { kind, ts: Date.now() };
+    function notifyDataChanged(kind = 'data', extra = {}) {
+        const msg = { kind, ts: Date.now(), ...extra };
         try {
             if (syncChannel) syncChannel.postMessage(msg);
         } catch (e) {}
@@ -174,10 +195,14 @@
     }
 
     const STATIC_DB_KEY = 'pazings_static_db_v1';
-    const CLOUD_SYNC_TOPIC = 'pazings_cloud_db_fb99_prod_v1';
+    const CLOUD_SYNC_TOPIC = 'pazings_cloud_db_fb99_prod_v2';
+    const CLOUD_POINTER_URL = 'https://api.restful-api.dev/objects/ff808181a09d98f701a18d3684086403';
     let staticCloudInitialized = false;
-    let lastCloudPullMs = 0;
     let lastKnownCloudKey = '';
+    let lastProcessedEventTime = 0;
+    let inFlightCloudPull = null;
+    let hasPushedInitialLocal = false;
+    let activeSseSource = null;
 
     function isRealBrowserEnv() {
         return typeof window !== 'undefined' && Boolean(window.location && window.location.hostname);
@@ -288,6 +313,33 @@
         };
     }
 
+    async function fetchAndMergeCloudKey(key, allowInitialPushBack = false) {
+        if (!key || !isRealBrowserEnv()) return loadStaticDb();
+        try {
+            const binResp = await fetch(`https://bytebin.lucko.me/${key}`);
+            if (!binResp.ok) return loadStaticDb();
+            const remoteDb = await binResp.json();
+            const currentLocal = loadStaticDb();
+
+            const remoteTxIds = new Set((remoteDb.transactions || []).map(t => t.id));
+            const localHasUnpushedTx = (currentLocal.transactions || []).some(t => !remoteTxIds.has(t.id));
+            const remoteExpIds = new Set((remoteDb.expenses || []).map(e => e.id));
+            const localHasUnpushedExp = (currentLocal.expenses || []).some(e => !remoteExpIds.has(e.id));
+
+            const merged = mergeStaticDbs(currentLocal, remoteDb);
+            localStorage.setItem(STATIC_DB_KEY, JSON.stringify(merged));
+            lastKnownCloudKey = key;
+
+            if (allowInitialPushBack && !hasPushedInitialLocal && (localHasUnpushedTx || localHasUnpushedExp)) {
+                hasPushedInitialLocal = true;
+                pushStaticDbToCloud(merged);
+            }
+            return merged;
+        } catch (e) {
+            return loadStaticDb();
+        }
+    }
+
     async function pushStaticDbToCloud(db) {
         if (!isRealBrowserEnv()) return;
         try {
@@ -300,87 +352,112 @@
             const { key } = await postResp.json();
             if (!key) return;
             lastKnownCloudKey = key;
-            await fetch(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}`, {
-                method: 'POST',
-                body: `SYNC:${key}:${db.updatedAt || Date.now()}`
-            });
+            const ts = db.updatedAt || Date.now();
+            notifyDataChanged('static_db', { cloudKey: key });
+
+            await Promise.allSettled([
+                fetch(CLOUD_POINTER_URL, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: 'pazings_db', data: { key, updatedAt: ts } })
+                }),
+                fetch(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}`, {
+                    method: 'POST',
+                    body: `SYNC:${key}:${ts}`
+                })
+            ]);
         } catch (e) {}
     }
 
-    async function pullStaticDbFromCloud(force = false) {
+    async function pullStaticDbFromCloud() {
         if (!isRealBrowserEnv()) return loadStaticDb();
-        const now = Date.now();
-        if (!force && now - lastCloudPullMs < 1500) {
-            return loadStaticDb();
-        }
-        lastCloudPullMs = now;
-        try {
-            const pollResp = await fetch(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}/json?poll=1&since=all`);
-            if (!pollResp.ok) return loadStaticDb();
-            const text = await pollResp.text();
-            const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-            let latestKey = '';
-            for (let i = lines.length - 1; i >= 0; i--) {
+        if (inFlightCloudPull) return inFlightCloudPull;
+
+        inFlightCloudPull = (async () => {
+            try {
+                let latestKey = '';
+                let latestTs = 0;
+
+                // 1. Primary fast pointer check
                 try {
-                    const evt = JSON.parse(lines[i]);
-                    if (evt && typeof evt.message === 'string' && evt.message.startsWith('SYNC:')) {
-                        const parts = evt.message.split(':');
-                        if (parts[1]) {
-                            latestKey = parts[1];
-                            break;
+                    const ptrResp = await fetch(`${CLOUD_POINTER_URL}?t=${Date.now()}`, { cache: 'no-store' });
+                    if (ptrResp.ok) {
+                        const ptrJson = await ptrResp.json();
+                        if (ptrJson?.data?.key) {
+                            latestKey = String(ptrJson.data.key);
+                            latestTs = Number(ptrJson.data.updatedAt || 0);
                         }
                     }
                 } catch (e) {}
-            }
 
-            const localDb = loadStaticDb();
-            if (!latestKey) {
-                if ((localDb.transactions && localDb.transactions.length > 0) || (localDb.expenses && localDb.expenses.length > 0)) {
-                    pushStaticDbToCloud(localDb);
+                // 2. Fallback to ntfy topic log if pointer has higher timestamp or primary unavailable
+                if (!latestKey) {
+                    try {
+                        const pollResp = await fetch(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}/json?poll=1&since=all`);
+                        if (pollResp.ok) {
+                            const text = await pollResp.text();
+                            const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+                            for (let i = lines.length - 1; i >= 0; i--) {
+                                try {
+                                    const evt = JSON.parse(lines[i]);
+                                    if (evt && typeof evt.message === 'string' && evt.message.startsWith('SYNC:')) {
+                                        const parts = evt.message.split(':');
+                                        if (parts[1]) {
+                                            latestKey = parts[1];
+                                            latestTs = Number(parts[2] || 0);
+                                            break;
+                                        }
+                                    }
+                                } catch (e) {}
+                            }
+                        }
+                    } catch (e) {}
                 }
-                return localDb;
+
+                if (latestTs > lastProcessedEventTime) {
+                    lastProcessedEventTime = latestTs;
+                }
+
+                const localDb = loadStaticDb();
+                if (!latestKey) {
+                    if (!hasPushedInitialLocal && ((localDb.transactions && localDb.transactions.length > 0) || (localDb.expenses && localDb.expenses.length > 0))) {
+                        hasPushedInitialLocal = true;
+                        pushStaticDbToCloud(localDb);
+                    }
+                    return localDb;
+                }
+
+                return await fetchAndMergeCloudKey(latestKey, true);
+            } catch (e) {
+                return loadStaticDb();
+            } finally {
+                inFlightCloudPull = null;
             }
+        })();
 
-            const binResp = await fetch(`https://bytebin.lucko.me/${latestKey}`);
-            if (!binResp.ok) return localDb;
-            const remoteDb = await binResp.json();
-
-            const remoteTxIds = new Set((remoteDb.transactions || []).map(t => t.id));
-            const localHasUnpushedTx = (localDb.transactions || []).some(t => !remoteTxIds.has(t.id));
-            const remoteExpIds = new Set((remoteDb.expenses || []).map(e => e.id));
-            const localHasUnpushedExp = (localDb.expenses || []).some(e => !remoteExpIds.has(e.id));
-
-            const merged = mergeStaticDbs(localDb, remoteDb);
-            localStorage.setItem(STATIC_DB_KEY, JSON.stringify(merged));
-            lastKnownCloudKey = latestKey;
-
-            if (localHasUnpushedTx || localHasUnpushedExp) {
-                pushStaticDbToCloud(merged);
-            }
-            return merged;
-        } catch (e) {
-            return loadStaticDb();
-        }
+        return inFlightCloudPull;
     }
 
     function ensureStaticCloudSyncStarted() {
         if (staticCloudInitialized || !isRealBrowserEnv()) return;
         staticCloudInitialized = true;
 
-        pullStaticDbFromCloud(true).then(() => {
+        pullStaticDbFromCloud().then(() => {
             refreshActiveView();
         });
 
         if (typeof window.EventSource === 'function') {
             try {
-                const es = new window.EventSource(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}/sse`);
-                es.onmessage = async (event) => {
+                activeSseSource = new window.EventSource(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}/sse?since=all`);
+                activeSseSource.onmessage = async (event) => {
                     try {
                         const data = JSON.parse(event.data);
                         if (data && typeof data.message === 'string' && data.message.startsWith('SYNC:')) {
                             const key = data.message.split(':')[1];
-                            if (key && key !== lastKnownCloudKey) {
-                                await pullStaticDbFromCloud(true);
+                            const evtTime = Number(data.time || 0);
+                            if (key && (key !== lastKnownCloudKey || evtTime > lastProcessedEventTime)) {
+                                if (evtTime > lastProcessedEventTime) lastProcessedEventTime = evtTime;
+                                await fetchAndMergeCloudKey(key, false);
                                 refreshActiveView();
                             }
                         }
@@ -389,14 +466,16 @@
             } catch (e) {}
         }
 
+        // Gentle fallback check only if SSE is not open
         setInterval(async () => {
+            if (activeSseSource && activeSseSource.readyState === 1) return;
             const beforeRaw = localStorage.getItem(STATIC_DB_KEY);
-            await pullStaticDbFromCloud(true);
+            await pullStaticDbFromCloud();
             const afterRaw = localStorage.getItem(STATIC_DB_KEY);
             if (beforeRaw !== afterRaw) {
                 refreshActiveView();
             }
-        }, 4000);
+        }, 12000);
     }
 
     async function saveStaticDb(db) {
@@ -406,7 +485,6 @@
         } catch (e) {}
         notifyDataChanged('static_db');
         await pushStaticDbToCloud(db);
-        notifyDataChanged('static_db');
     }
 
     function sanitizeStaticUser(u) {
@@ -423,15 +501,14 @@
 
     async function localStaticApi(action, payload = {}, session = null) {
         ensureStaticCloudSyncStarted();
-        const readActions = new Set([
-            'loginPin', 'me', 'refresh', 'getServices',
-            'getTransactions', 'getTransactionsByDateRange',
-            'getExpenses', 'getExpensesByDateRange',
-            'getCustomers', 'getUsers'
+        const writeActions = new Set([
+            'addService', 'updateService', 'saveRates', 'toggleServiceActive', 'deleteService',
+            'addTransaction', 'togglePaymentStatus', 'deleteTransaction',
+            'addExpense', 'deleteExpense', 'addCustomer', 'createUser', 'toggleUserStatus'
         ]);
-        const db = readActions.has(action)
-            ? await pullStaticDbFromCloud(false)
-            : await pullStaticDbFromCloud(true);
+        const db = writeActions.has(action) && lastKnownCloudKey
+            ? await fetchAndMergeCloudKey(lastKnownCloudKey, false)
+            : loadStaticDb();
         let currentUser = null;
         if (session?.accessToken && String(session.accessToken).startsWith('static-token:')) {
             const uid = String(session.accessToken).slice('static-token:'.length);
@@ -3151,26 +3228,37 @@
         localStorage.removeItem('pazings_device_pin_attempts');
 
         if (syncChannel) {
-            syncChannel.onmessage = () => {
+            syncChannel.onmessage = async (event) => {
+                if (event?.data?.cloudKey && event.data.cloudKey !== lastKnownCloudKey) {
+                    await fetchAndMergeCloudKey(event.data.cloudKey, false);
+                }
                 refreshActiveView();
             };
         }
 
         if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
             window.addEventListener('storage', (e) => {
-                if (e.key === 'pazings_sync_signal') {
+                if (e.key === 'pazings_sync_signal' || e.key === STATIC_DB_KEY) {
                     refreshActiveView();
                 }
             });
             window.addEventListener('focus', () => {
-                refreshActiveView();
+                if (staticCloudInitialized) {
+                    pullStaticDbFromCloud().then(() => refreshActiveView());
+                } else {
+                    refreshActiveView();
+                }
             });
         }
 
         if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
             document.addEventListener('visibilitychange', () => {
                 if (document.visibilityState === 'visible') {
-                    refreshActiveView();
+                    if (staticCloudInitialized) {
+                        pullStaticDbFromCloud().then(() => refreshActiveView());
+                    } else {
+                        refreshActiveView();
+                    }
                 }
             });
         }
