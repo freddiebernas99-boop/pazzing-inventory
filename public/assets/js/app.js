@@ -1294,6 +1294,9 @@
 
     function switchView(viewName) {
         closeMobileMenu();
+        if (typeof document !== 'undefined' && document.activeElement && typeof document.activeElement.blur === 'function') {
+            try { document.activeElement.blur(); } catch (e) {}
+        }
         AppState.currentView = viewName;
 
         // If not logged in, enforce login view
@@ -1391,7 +1394,7 @@
         }
 
         if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
         }
     }
 
