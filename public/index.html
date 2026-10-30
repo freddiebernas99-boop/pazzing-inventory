@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+    <title>Pazings Inventory & Sales Management</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/print.css" media="print">
+</head>
+<body>
+
+<!-- Global Alert Container -->
+<div id="alert-container" style="position: fixed; top: 12px; right: 16px; z-index: 2100; max-width: 360px;"></div>
+
+<!-- Top Navigation Bar -->
+<header class="app-header" id="main-header" style="display: none;">
+    <div class="nav-container">
+        <div class="brand-logo" id="nav-brand">
+            <span>PAZINGS</span>
+            <span class="brand-badge" id="user-role-badge">STAFF</span>
+        </div>
+
+        <div class="nav-actions">
+            <button type="button" class="nav-toggle-btn" id="navToggle" aria-label="Toggle navigation" aria-expanded="false" aria-controls="navLinks">
+                Menu
+            </button>
+
+            <ul class="nav-links" id="navLinks" role="menu">
+                <li role="none"><button type="button" class="nav-link active" data-view="dashboard" role="menuitem">Dashboard</button></li>
+                <li role="none"><button type="button" class="nav-link" data-view="water" role="menuitem">Water Refilling</button></li>
+                <li role="none"><button type="button" class="nav-link" data-view="laundry" role="menuitem">Laundry</button></li>
+                <li role="none"><button type="button" class="nav-link" data-view="expenses" role="menuitem">Expenses</button></li>
+                <li role="none"><button type="button" class="nav-link" data-view="reports" role="menuitem">Reports</button></li>
+
+                <!-- Owner Only Navigation Items -->
+                <li class="owner-only" style="display: none;" role="none"><button type="button" class="nav-link" data-view="customers" role="menuitem">Customers</button></li>
+                <li class="owner-only" style="display: none;" role="none"><button type="button" class="nav-link" data-view="rates" role="menuitem">Rates</button></li>
+                <li class="owner-only" style="display: none;" role="none"><button type="button" class="nav-link" data-view="staff" role="menuitem">Staff</button></li>
+
+                <li class="nav-item-user" style="margin-left: 6px;" role="none">
+                    <span class="user-badge" id="nav-user-name">User</span>
+                </li>
+                <li class="nav-item-logout" role="none">
+                    <button type="button" id="logout-btn" style="color: var(--danger);" role="menuitem">Logout</button>
+                </li>
+            </ul>
+        </div>
+    </div>
+</header>
+
+<main class="main-wrapper" id="main-content">
+
+    <!-- ======================================================== -->
+    <!-- VIEW 1: LOGIN -->
+    <!-- ======================================================== -->
+    <section id="view-login">
+        <div style="min-height: 80vh; display: flex; align-items: center; justify-content: center; padding: 16px;">
+            <div style="width: 100%; max-width: 400px; background: var(--surface); border-radius: var(--radius-md); padding: 28px 24px; border: 1px solid var(--border); box-shadow: var(--shadow-subtle);">
+                <div style="text-align: center; margin-bottom: 22px;">
+                    <h1 style="font-size: 1.45rem; color: var(--navy); font-weight: 700; letter-spacing: -0.01em;">PAZINGS</h1>
+                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 2px;">Management System</p>
+                </div>
+
+                <div id="login-pin-card">
+                    <p style="text-align: center; font-size: 0.88rem; color: var(--text-primary); margin-bottom: 16px; font-weight: 500;">
+                        Select your role to sign in:
+                    </p>
+                    <div id="pin-role-select" style="display: flex; flex-direction: column; gap: 12px;">
+                        <button type="button" class="role-select-btn" id="btn-select-staff-pin">
+                            <span class="role-btn-title">Staff</span>
+                            <span class="role-btn-desc">Front desk operations & transaction encoding</span>
+                        </button>
+                        <button type="button" class="role-select-btn" id="btn-select-admin-pin">
+                            <span class="role-btn-title">Admin</span>
+                            <span class="role-btn-desc">Owner portal, rates, staff & financial reports</span>
+                        </button>
+                    </div>
+                    <div id="login-staff-pin-card" style="display: none;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+                            <h2 style="font-size: 1.05rem; color: var(--navy); font-weight: 600;">Staff Sign In</h2>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-staff-pin-back">&larr; Back</button>
+                        </div>
+                        <div id="login-staff-pin-error" class="alert alert-danger" style="display: none; margin-bottom: 14px;"></div>
+                        <form id="staff-pin-login-form">
+                            <div class="form-group">
+                                <label class="form-label" for="staff-account-pin">4-digit staff PIN</label>
+                                <input type="password" id="staff-account-pin" class="form-control" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="current-password" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-lg" id="staff-pin-login-btn" style="width: 100%; margin-top: 8px;">Sign In</button>
+                        </form>
+                    </div>
+                    <div id="login-admin-pin-card" style="display: none;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+                            <h2 style="font-size: 1.05rem; color: var(--navy); font-weight: 600;">Admin Sign In</h2>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btn-admin-pin-back">&larr; Back</button>
+                        </div>
+                        <div id="login-admin-pin-error" class="alert alert-danger" style="display: none; margin-bottom: 14px;"></div>
+                        <form id="admin-pin-login-form">
+                            <div class="form-group">
+                                <label class="form-label" for="admin-account-pin">4-digit admin PIN</label>
+                                <input type="password" id="admin-account-pin" class="form-control" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="current-password" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-lg" id="admin-pin-login-btn" style="width: 100%; margin-top: 8px;">Sign In</button>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 2: STAFF DASHBOARD / DAILY OVERVIEW -->
+    <!-- ======================================================== -->
+    <section id="view-dashboard" class="app-view" style="display: none;">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Daily Overview</h1>
+                <p class="page-subtitle" id="dashboard-date-display">Today</p>
+            </div>
+            <div class="owner-only" style="display: none;">
+                <button type="button" class="btn btn-secondary btn-sm" data-nav="reports">Full Business Summary</button>
+            </div>
+        </div>
+
+        <!-- Three Clear Primary Actions -->
+        <div class="action-grid">
+            <button type="button" class="action-btn" data-nav="water">Water Refilling</button>
+            <button type="button" class="action-btn" data-nav="laundry">Laundry</button>
+            <button type="button" class="action-btn secondary-action" data-nav="expenses">Expenses</button>
+        </div>
+
+        <!-- Today's Paid Sales Banner -->
+        <div class="overview-banner">
+            <div>
+                <div class="overview-label">Today's Paid Sales</div>
+                <div class="overview-value" id="dashboard-paid-sales">₱0.00</div>
+                <div style="margin-top: 4px; font-size: 0.8rem; color: var(--text-secondary);">
+                    Gross Sales: <strong style="color: var(--navy);" id="dashboard-gross-sales">₱0.00</strong>
+                    <span style="margin-left: 4px;">(Water: <span id="dashboard-water-gross">₱0.00</span> &bull; Laundry: <span id="dashboard-laundry-gross">₱0.00</span>)</span>
+                </div>
+            </div>
+            <div style="font-size: 0.82rem; color: var(--text-secondary); text-align: right;">
+                <div>Water Paid: <strong id="dashboard-water-paid">₱0.00</strong></div>
+                <div>Laundry Paid: <strong id="dashboard-laundry-paid">₱0.00</strong></div>
+                <div style="margin-top: 2px;" id="dashboard-trans-count">0 transaction(s) recorded today</div>
+            </div>
+        </div>
+
+        <!-- Unpaid Balance Section (Immediately Below Primary Summary Area) -->
+        <div class="unpaid-banner" id="dashboard-unpaid-banner">
+            <div>
+                <div class="unpaid-label">Unpaid Balance</div>
+                <div class="unpaid-value" id="dashboard-unpaid-balance">₱0.00</div>
+            </div>
+            <div style="font-size: 0.82rem; color: var(--text-secondary); text-align: right;">
+                <div id="dashboard-unpaid-count">0 unpaid transaction(s)</div>
+                <div style="margin-top: 2px; font-size: 0.78rem;">
+                    Water: <span id="dashboard-water-unpaid">₱0.00</span> &bull; Laundry: <span id="dashboard-laundry-unpaid">₱0.00</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Small List of Recent Transactions -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Recent Transactions</h2>
+                <span style="font-size: 0.78rem; color: var(--text-secondary);" id="dashboard-recent-count">0 records</span>
+            </div>
+
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Code</th>
+                            <th>Category</th>
+                            <th>Customer Name</th>
+                            <th style="text-align: right;">Amount</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dashboard-recent-tbody">
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 24px; color: var(--text-secondary);">
+                                Loading transactions...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 3: WATER REFILLING -->
+    <!-- ======================================================== -->
+    <section id="view-water" class="app-view" style="display: none;">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Water Refilling</h1>
+                <p class="page-subtitle">Record daily refill and delivery transactions</p>
+            </div>
+        </div>
+
+        <!-- 1. Straightforward Transaction Form -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">New Water Transaction</h2>
+                <span style="font-size: 0.78rem; color: var(--text-secondary);">Enter quantities to compute total</span>
+            </div>
+
+            <form id="water-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="water-date">Date</label>
+                        <input type="date" id="water-date" class="form-control" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="water-customer">Customer Name (Optional)</label>
+                        <input type="text" id="water-customer" class="form-control" list="customer-datalist" placeholder="Walk-in or Client Name" autocomplete="off">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="water-payment-status">Payment Status</label>
+                        <select id="water-payment-status" class="form-select">
+                            <option value="paid" selected>Paid</option>
+                            <option value="unpaid">Unpaid / Balance</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Dynamic Quantities Grid (populated from active water services) -->
+                <div class="qty-grid" id="water-services-container">
+                    <!-- Populated dynamically via renderWaterFormFields() -->
+                </div>
+
+                <!-- Extra Item (e.g. Round cover ₱15, Half gallon ₱15) -->
+                <div style="margin-bottom: 12px;">
+                    <details style="font-size: 0.82rem; color: var(--navy); cursor: pointer;">
+                        <summary style="font-weight: 600; padding: 4px 0;">+ Add Extra Item (e.g. Gallon Cover, Half Gallon)</summary>
+                        <div class="form-row" style="margin-top: 8px;">
+                            <div class="form-group">
+                                <input type="text" id="water-extra-name" class="form-control" placeholder="Item Name (e.g. Round Cover)">
+                            </div>
+                            <div class="form-group">
+                                <input type="number" id="water-extra-qty" class="form-control" placeholder="Quantity" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <input type="number" id="water-extra-price" class="form-control" placeholder="Price (₱)" min="0" step="0.50">
+                            </div>
+                        </div>
+                    </details>
+                </div>
+
+                <div class="form-group">
+                    <input type="text" id="water-notes" class="form-control" placeholder="Optional notes (e.g. room number, delivery time)">
+                </div>
+
+                <!-- Total immediately above Save Transaction Button -->
+                <div class="total-save-box">
+                    <div>
+                        <div class="total-label">Transaction Total</div>
+                        <div class="total-value" id="water-total-display">₱0.00</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-lg" id="water-save-btn">
+                        Save Transaction
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- 2. Compact Table of Today's Transactions -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Today's Water Transactions</h2>
+                <div style="font-weight: 700; color: var(--navy); font-size: 1rem;" id="water-day-total">
+                    Total: ₱0.00
+                </div>
+            </div>
+
+            <!-- Compact Date Filter -->
+            <div class="no-print" style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <label style="font-size: 0.82rem; font-weight: 600;">Date:</label>
+                <input type="date" id="water-filter-date" class="form-control" style="width: auto; min-height: 30px; padding: 4px 8px;">
+                <button type="button" class="btn btn-secondary btn-sm" id="water-filter-btn">Filter</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="water-today-btn">Today</button>
+            </div>
+
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 35px;">No.</th>
+                            <th>Time</th>
+                            <th>Customer</th>
+                            <th>Items</th>
+                            <th style="text-align: right;">Total</th>
+                            <th>Status</th>
+                            <th class="owner-only no-print" style="text-align: center; width: 60px; display: none;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="water-tbody">
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 24px; color: var(--text-secondary);">
+                                No water transactions recorded for this date.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card-summary-footer">
+                <div class="summary-metric">
+                    <span class="metric-label">Transactions</span>
+                    <strong class="metric-val" id="water-summary-count">0</strong>
+                </div>
+                <div class="summary-metric">
+                    <span class="metric-label">Gross Sales</span>
+                    <strong class="metric-val" id="water-summary-gross">₱0.00</strong>
+                </div>
+                <div class="summary-metric">
+                    <span class="metric-label">Paid Collections</span>
+                    <strong class="metric-val text-success" id="water-summary-paid">₱0.00</strong>
+                </div>
+                <div class="summary-metric">
+                    <span class="metric-label">Unpaid Balance</span>
+                    <strong class="metric-val text-unpaid" id="water-summary-unpaid">₱0.00</strong>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 4: LAUNDRY -->
+    <!-- ======================================================== -->
+    <section id="view-laundry" class="app-view" style="display: none;">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Laundry</h1>
+                <p class="page-subtitle">Record daily laundry wash, dry, and supply transactions</p>
+            </div>
+        </div>
+
+        <!-- 1. Straightforward Laundry Transaction Form -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">New Laundry Transaction</h2>
+                <span style="font-size: 0.78rem; color: var(--text-secondary);">Enter service loads and supplies</span>
+            </div>
+
+            <form id="laundry-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="laundry-date">Date</label>
+                        <input type="date" id="laundry-date" class="form-control" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="laundry-customer">Customer Name</label>
+                        <input type="text" id="laundry-customer" class="form-control" list="customer-datalist" placeholder="e.g. Dela Pasion, Ian Narido" autocomplete="off" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="laundry-payment-status">Payment Status</label>
+                        <select id="laundry-payment-status" class="form-select">
+                            <option value="paid" selected>Paid</option>
+                            <option value="unpaid">Unpaid / For Pickup</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Dynamic Service Quantities Grid (populated from active laundry services) -->
+                <div class="qty-grid" id="laundry-services-container">
+                    <!-- Populated dynamically via renderLaundryFormFields() -->
+                </div>
+
+                <div class="form-group">
+                    <input type="text" id="laundry-notes" class="form-control" placeholder="Optional notes (e.g. claim tag #, special instructions)">
+                </div>
+
+                <!-- Total immediately above Save Transaction Button -->
+                <div class="total-save-box">
+                    <div>
+                        <div class="total-label">Transaction Total</div>
+                        <div class="total-value" id="laundry-total-display">₱0.00</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-lg" id="laundry-save-btn">
+                        Save Transaction
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- 2. Compact Table of Today's Transactions -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Today's Laundry Transactions</h2>
+                <div style="font-weight: 700; color: var(--navy); font-size: 1rem;" id="laundry-day-total">
+                    Total: ₱0.00
+                </div>
+            </div>
+
+            <!-- Compact Date Filter -->
+            <div class="no-print" style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <label style="font-size: 0.82rem; font-weight: 600;">Date:</label>
+                <input type="date" id="laundry-filter-date" class="form-control" style="width: auto; min-height: 30px; padding: 4px 8px;">
+                <button type="button" class="btn btn-secondary btn-sm" id="laundry-filter-btn">Filter</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="laundry-today-btn">Today</button>
+            </div>
+
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 35px;">No.</th>
+                            <th>Time</th>
+                            <th>Customer</th>
+                            <th>Services / Items</th>
+                            <th style="text-align: right;">Total</th>
+                            <th>Status</th>
+                            <th class="owner-only no-print" style="text-align: center; width: 60px; display: none;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="laundry-tbody">
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 24px; color: var(--text-secondary);">
+                                No laundry transactions recorded for this date.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card-summary-footer">
+                <div class="summary-metric">
+                    <span class="metric-label">Transactions</span>
+                    <strong class="metric-val" id="laundry-summary-count">0</strong>
+                </div>
+                <div class="summary-metric">
+                    <span class="metric-label">Gross Sales</span>
+                    <strong class="metric-val" id="laundry-summary-gross">₱0.00</strong>
+                </div>
+                <div class="summary-metric">
+                    <span class="metric-label">Paid Collections</span>
+                    <strong class="metric-val text-success" id="laundry-summary-paid">₱0.00</strong>
+                </div>
+                <div class="summary-metric">
+                    <span class="metric-label">Unpaid Balance</span>
+                    <strong class="metric-val text-unpaid" id="laundry-summary-unpaid">₱0.00</strong>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 5: EXPENSES -->
+    <!-- ======================================================== -->
+    <section id="view-expenses" class="app-view" style="display: none;">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Expenses</h1>
+                <p class="page-subtitle">Track daily water, laundry, and shared operational costs</p>
+            </div>
+        </div>
+
+        <!-- 1. Straightforward Expense Entry Form -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">New Expense Record</h2>
+                <span style="font-size: 0.78rem; color: var(--text-secondary);">Enter expense particulars</span>
+            </div>
+
+            <form id="expenses-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="expense-date">Date</label>
+                        <input type="date" id="expense-date" class="form-control" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="expense-category">Business Category</label>
+                        <select id="expense-category" class="form-select" required>
+                            <option value="water">Water Refilling</option>
+                            <option value="laundry">Laundry</option>
+                            <option value="shared" selected>Shared Business Expense</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="expense-particular">Expense Description</label>
+                        <input type="text" id="expense-particular" class="form-control" placeholder="e.g. Fuel, Surf Powder, Ulam" required autofocus>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="expense-qty">Quantity (Optional)</label>
+                        <input type="number" id="expense-qty" class="form-control" placeholder="e.g. 1 or 288" step="any" min="0">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="expense-unit-price">Unit Price (Optional)</label>
+                        <input type="number" id="expense-unit-price" class="form-control" placeholder="₱ 0.00" step="0.01" min="0">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="expense-amount">Total Amount (₱)</label>
+                        <input type="number" id="expense-amount" class="form-control" placeholder="0.00" step="0.01" min="0.01" required style="font-weight: 700; color: var(--navy);">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="expense-notes">Notes / OR # (Optional)</label>
+                        <input type="text" id="expense-notes" class="form-control" placeholder="Optional notes">
+                    </div>
+                </div>
+
+                <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
+                    <button type="submit" class="btn btn-primary btn-lg" id="expense-save-btn">
+                        Save Expense
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- 2. Compact Table of Today's Recorded Expenses -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Today's Recorded Expenses</h2>
+                <div style="font-weight: 700; color: var(--danger); font-size: 1rem;" id="expenses-day-total">
+                    Total: ₱0.00
+                </div>
+            </div>
+
+            <!-- Compact Filter Bar -->
+            <div class="no-print" style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <label style="font-size: 0.82rem; font-weight: 600;">Date:</label>
+                <input type="date" id="expenses-filter-date" class="form-control" style="width: auto; min-height: 30px; padding: 4px 8px;">
+
+                <label style="font-size: 0.82rem; font-weight: 600;">Category:</label>
+                <select id="expenses-filter-category" class="form-select" style="width: auto; min-height: 30px; padding: 4px 8px;">
+                    <option value="all">All Categories</option>
+                    <option value="water">Water Refilling</option>
+                    <option value="laundry">Laundry</option>
+                    <option value="shared">Shared Business</option>
+                </select>
+
+                <button type="button" class="btn btn-secondary btn-sm" id="expenses-filter-btn">Filter</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="expenses-today-btn">Today</button>
+            </div>
+
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 35px;">No.</th>
+                            <th>Category</th>
+                            <th>Description</th>
+                            <th style="text-align: center;">Qty</th>
+                            <th style="text-align: right;">Unit Price</th>
+                            <th style="text-align: right;">Amount</th>
+                            <th>Notes</th>
+                            <th class="owner-only no-print" style="text-align: center; width: 60px; display: none;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="expenses-tbody">
+                        <tr>
+                            <td colspan="8" style="text-align: center; padding: 24px; color: var(--text-secondary);">
+                                No expenses recorded for this date.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 6: REPORTS & OVERALL DAILY SUMMARY -->
+    <!-- ======================================================== -->
+    <section id="view-reports" class="app-view" style="display: none;">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Reports & Business Summary</h1>
+                <p class="page-subtitle" id="reports-date-subtitle">Daily and periodic financial reports</p>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button type="button" class="btn btn-secondary btn-sm" id="reports-export-csv-btn">Export CSV</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="window.print()">Print / PDF</button>
+            </div>
+        </div>
+
+        <!-- Print Header -->
+        <div class="print-header">
+            <h1>PAZINGS MANAGEMENT</h1>
+            <p>OVERALL DAILY BUSINESS SUMMARY</p>
+            <p id="print-date-label">Report Date</p>
+        </div>
+
+        <!-- Compact Date Selector -->
+        <div class="filter-bar no-print">
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <label style="font-size: 0.82rem; font-weight: 600;">Report Date:</label>
+                <input type="date" id="reports-date-input" class="form-control" style="width: auto; min-height: 30px; padding: 4px 8px;">
+                <button type="button" class="btn btn-primary btn-sm" id="reports-load-btn">Load Summary</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="reports-today-btn">Today</button>
+            </div>
+        </div>
+
+        <!-- Financial Statement & Expenses Breakdown -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;">
+            <!-- Left: Financial Statement -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Daily Financial Statement</h2>
+                    <span style="font-size: 0.78rem; color: var(--navy); font-weight: 600;" id="reports-statement-date">Date</span>
+                </div>
+
+                <table class="data-table" style="font-size: 0.88rem;">
+                    <thead>
+                        <tr>
+                            <th>Account / Particular</th>
+                            <th style="text-align: right;">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr style="background: var(--bg-page); font-weight: 600; font-size: 0.75rem; color: var(--navy); text-transform: uppercase;">
+                            <td colspan="2">Gross Sales (Services Sold)</td>
+                        </tr>
+                        <tr>
+                            <td>Water Refilling Gross Sales</td>
+                            <td style="text-align: right; font-weight: 600;" id="rep-water-sales">₱0.00</td>
+                        </tr>
+                        <tr>
+                            <td>Laundry Shop Gross Sales</td>
+                            <td style="text-align: right; font-weight: 600;" id="rep-laundry-sales">₱0.00</td>
+                        </tr>
+                        <tr style="background: var(--blue-light); font-weight: 700;">
+                            <td>TOTAL GROSS SALES</td>
+                            <td style="text-align: right; color: var(--navy); font-size: 0.95rem;" id="rep-total-sales">₱0.00</td>
+                        </tr>
+
+                        <!-- Collections & Receivables Breakdown -->
+                        <tr style="background: var(--bg-page); font-weight: 600; font-size: 0.75rem; color: var(--navy); text-transform: uppercase;">
+                            <td colspan="2" style="padding-top: 12px;">Payment Status Breakdown</td>
+                        </tr>
+                        <tr>
+                            <td style="color: var(--success); font-weight: 500;">
+                                Paid Sales / Collections (Actual Cash)
+                                <div style="font-size: 0.74rem; color: var(--text-secondary); font-weight: 400;">
+                                    Water: <span id="rep-water-paid">₱0.00</span> &bull; Laundry: <span id="rep-laundry-paid">₱0.00</span>
+                                </div>
+                            </td>
+                            <td style="text-align: right; font-weight: 600; color: var(--success);" id="rep-paid-collections">₱0.00</td>
+                        </tr>
+                        <tr>
+                            <td style="color: #974F0C; font-weight: 500;">
+                                Unpaid Balance (Receivables Owed)
+                                <div style="font-size: 0.74rem; color: var(--text-secondary); font-weight: 400;">
+                                    Water: <span id="rep-water-unpaid">₱0.00</span> &bull; Laundry: <span id="rep-laundry-unpaid">₱0.00</span>
+                                </div>
+                            </td>
+                            <td style="text-align: right; font-weight: 600; color: #974F0C;" id="rep-unpaid-balance">₱0.00</td>
+                        </tr>
+
+                        <!-- Business Expenses -->
+                        <tr style="background: var(--bg-page); font-weight: 600; font-size: 0.75rem; color: var(--navy); text-transform: uppercase;">
+                            <td colspan="2" style="padding-top: 14px;">Business Expenses</td>
+                        </tr>
+                        <tr>
+                            <td>Water Refilling Expenses</td>
+                            <td style="text-align: right; color: var(--danger);" id="rep-water-exp">₱0.00</td>
+                        </tr>
+                        <tr>
+                            <td>Laundry Shop Expenses</td>
+                            <td style="text-align: right; color: var(--danger);" id="rep-laundry-exp">₱0.00</td>
+                        </tr>
+                        <tr>
+                            <td>Overall Shared Expenses</td>
+                            <td style="text-align: right; color: var(--danger);" id="rep-shared-exp">₱0.00</td>
+                        </tr>
+                        <tr style="background: var(--danger-bg); font-weight: 700;">
+                            <td>GRAND TOTAL EXPENSES</td>
+                            <td style="text-align: right; color: var(--danger); font-size: 0.95rem;" id="rep-total-exp">₱0.00</td>
+                        </tr>
+
+                        <!-- Financial Summary & Cash Flow -->
+                        <tr style="background: var(--bg-page); font-weight: 600; font-size: 0.75rem; color: var(--navy); text-transform: uppercase;">
+                            <td colspan="2" style="padding-top: 14px;">Summary Performance</td>
+                        </tr>
+                        <tr style="border-top: 1px solid var(--border);">
+                            <td style="font-weight: 600;">Net Cash Flow (Collections &minus; Expenses)</td>
+                            <td style="text-align: right; font-weight: 700; font-size: 0.95rem;" id="rep-cash-flow">₱0.00</td>
+                        </tr>
+                        <tr style="border-top: 2px solid var(--border-dark); background: var(--success-bg);" id="rep-net-row">
+                            <td style="padding: 10px 8px; font-weight: 700; color: var(--success);" id="rep-net-label">ESTIMATED NET PROFIT (Accrual)</td>
+                            <td style="padding: 10px 8px; text-align: right; font-size: 1.15rem; font-weight: 700; color: var(--success);" id="rep-net-value">₱0.00</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Right: Shared Expenses Particulars -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Shared Business Expenses Breakdown</h2>
+                    <span style="font-size: 0.78rem; color: var(--text-secondary);" id="rep-shared-items-count">0 item(s)</span>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 35px;">No.</th>
+                                <th>Particular</th>
+                                <th style="text-align: center;">Qty</th>
+                                <th style="text-align: right;">Price</th>
+                                <th style="text-align: right;">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rep-shared-tbody">
+                            <tr>
+                                <td colspan="5" style="text-align: center; padding: 24px; color: var(--text-secondary);">
+                                    No shared business expenses recorded for this date.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Water & Laundry Daily Transactions (Side-by-Side on Desktop, Stacked on Mobile) -->
+        <div class="reports-tx-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; margin-top: 16px;">
+            <!-- Left Card: Water Refilling Daily Transactions -->
+            <div class="card" id="rep-water-tx-card">
+                <div class="card-header">
+                    <h2 class="card-title">Water Refilling Daily Transactions</h2>
+                    <span class="badge badge-water" id="rep-water-tx-count">0 records</span>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 35px;">No.</th>
+                                <th>Time</th>
+                                <th>Customer</th>
+                                <th>Items Breakdown</th>
+                                <th style="text-align: right;">Amount</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rep-water-tx-tbody">
+                            <tr>
+                                <td colspan="6" style="text-align: center; padding: 24px; color: var(--text-secondary);">
+                                    No water transactions recorded for this date.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card-summary-footer">
+                    <div class="summary-metric">
+                        <span class="metric-label">Transactions</span>
+                        <strong class="metric-val" id="rep-water-summary-count">0</strong>
+                    </div>
+                    <div class="summary-metric">
+                        <span class="metric-label">Gross Sales</span>
+                        <strong class="metric-val" id="rep-water-summary-gross">₱0.00</strong>
+                    </div>
+                    <div class="summary-metric">
+                        <span class="metric-label">Paid Collections</span>
+                        <strong class="metric-val text-success" id="rep-water-summary-paid">₱0.00</strong>
+                    </div>
+                    <div class="summary-metric">
+                        <span class="metric-label">Unpaid Balance</span>
+                        <strong class="metric-val text-unpaid" id="rep-water-summary-unpaid">₱0.00</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Card: Laundry Daily Transactions -->
+            <div class="card" id="rep-laundry-tx-card">
+                <div class="card-header">
+                    <h2 class="card-title">Laundry Daily Transactions</h2>
+                    <span class="badge badge-laundry" id="rep-laundry-tx-count">0 records</span>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 35px;">No.</th>
+                                <th>Time</th>
+                                <th>Customer</th>
+                                <th>Services / Items</th>
+                                <th style="text-align: right;">Amount</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rep-laundry-tx-tbody">
+                            <tr>
+                                <td colspan="6" style="text-align: center; padding: 24px; color: var(--text-secondary);">
+                                    No laundry transactions recorded for this date.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card-summary-footer">
+                    <div class="summary-metric">
+                        <span class="metric-label">Transactions</span>
+                        <strong class="metric-val" id="rep-laundry-summary-count">0</strong>
+                    </div>
+                    <div class="summary-metric">
+                        <span class="metric-label">Gross Sales</span>
+                        <strong class="metric-val" id="rep-laundry-summary-gross">₱0.00</strong>
+                    </div>
+                    <div class="summary-metric">
+                        <span class="metric-label">Paid Collections</span>
+                        <strong class="metric-val text-success" id="rep-laundry-summary-paid">₱0.00</strong>
+                    </div>
+                    <div class="summary-metric">
+                        <span class="metric-label">Unpaid Balance</span>
+                        <strong class="metric-val text-unpaid" id="rep-laundry-summary-unpaid">₱0.00</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 7: CUSTOMERS (OWNER ONLY) -->
+    <!-- ======================================================== -->
+    <section id="view-customers" class="app-view" style="display: none;">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Customers</h1>
+                <p class="page-subtitle">Directory of saved customer records and order histories</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Customer Records</h2>
+                <input type="text" id="customer-search-input" class="form-control" style="max-width: 200px; min-height: 30px; padding: 4px 8px;" placeholder="Search customer...">
+            </div>
+
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 35px;">No.</th>
+                            <th>Name</th>
+                            <th>Contact Phone</th>
+                            <th>Address</th>
+                            <th style="text-align: center;">Orders</th>
+                            <th style="text-align: right;">Total Spend</th>
+                            <th>Last Order</th>
+                        </tr>
+                    </thead>
+                    <tbody id="customers-tbody">
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 24px; color: var(--text-secondary);">
+                                No customer records found.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 8: SERVICE RATES (OWNER ONLY) -->
+    <!-- ======================================================== -->
+    <section id="view-rates" class="app-view" style="display: none;">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Service Rates & Catalog</h1>
+                <p class="page-subtitle">Add, edit, deactivate, or delete service items and configure default pricing</p>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-open-add-service">+ Add New Service</button>
+                <button type="submit" form="rates-form" class="btn btn-primary btn-sm">Save Rate Changes</button>
+            </div>
+        </div>
+
+        <div class="alert alert-info">
+            Rate Protection: Updating a rate applies to future transactions only. Past records retain their original prices.
+        </div>
+
+        <form id="rates-form">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Water Refilling Rates</h2>
+                    <span style="font-size: 0.78rem; color: var(--text-secondary);" id="rates-water-count">0 items</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Service Name</th>
+                                <th>Code</th>
+                                <th style="max-width: 140px;">Default Rate (₱)</th>
+                                <th>Unit</th>
+                                <th style="text-align: center;">Status</th>
+                                <th style="text-align: center; width: 140px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rates-water-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Laundry Rates & Supplies</h2>
+                    <span style="font-size: 0.78rem; color: var(--text-secondary);" id="rates-laundry-count">0 items</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Service / Supply Name</th>
+                                <th>Code</th>
+                                <th style="max-width: 140px;">Default Rate (₱)</th>
+                                <th>Unit</th>
+                                <th style="text-align: center;">Status</th>
+                                <th style="text-align: center; width: 140px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rates-laundry-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </form>
+
+        <!-- Modal: Add New Service -->
+        <div id="add-service-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h3 class="modal-title">Add New Service / Item</h3>
+                    <button type="button" class="modal-close-btn" id="close-add-service-btn">&times;</button>
+                </div>
+                <form id="add-service-form">
+                    <div class="form-group">
+                        <label class="form-label" for="new-srv-category">Business Category</label>
+                        <select id="new-srv-category" class="form-select" required>
+                            <option value="water">Water Refilling</option>
+                            <option value="laundry">Laundry</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="new-srv-name">Item / Service Name</label>
+                        <input type="text" id="new-srv-name" class="form-control" required placeholder="e.g. Round Gallon Cover, Bleach">
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="new-srv-code">Service Code (Unique)</label>
+                            <input type="text" id="new-srv-code" class="form-control" required placeholder="e.g. gallon_cover, bleach">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="new-srv-unit">Unit of Measure</label>
+                            <input type="text" id="new-srv-unit" class="form-control" required placeholder="e.g. bottles, loads, packs, pcs">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="new-srv-rate">Default Rate (₱)</label>
+                        <input type="number" id="new-srv-rate" class="form-control" step="0.50" min="0" required placeholder="0.00">
+                    </div>
+
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" id="cancel-add-service-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="save-new-service-btn">Create Service</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Modal: Edit Service Details -->
+        <div id="edit-service-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h3 class="modal-title">Edit Service Details</h3>
+                    <button type="button" class="modal-close-btn" id="close-edit-service-btn">&times;</button>
+                </div>
+                <form id="edit-service-form">
+                    <input type="hidden" id="edit-srv-id">
+
+                    <div class="form-group">
+                        <label class="form-label" for="edit-srv-name">Service / Item Name</label>
+                        <input type="text" id="edit-srv-name" class="form-control" required>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="edit-srv-rate">Default Rate (₱)</label>
+                            <input type="number" id="edit-srv-rate" class="form-control" step="0.50" min="0" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="edit-srv-unit">Unit of Measure</label>
+                            <input type="text" id="edit-srv-unit" class="form-control" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="edit-srv-status">Status</label>
+                        <select id="edit-srv-status" class="form-select">
+                            <option value="true">Active (Available in transaction forms)</option>
+                            <option value="false">Inactive / Deactivated (Hidden from transaction forms)</option>
+                        </select>
+                    </div>
+
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" id="cancel-edit-service-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="save-edit-service-btn">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 9: STAFF MANAGEMENT (OWNER ONLY) -->
+    <!-- ======================================================== -->
+    <section id="view-staff" class="app-view" style="display: none;">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">Staff Accounts</h1>
+                <p class="page-subtitle">Manage user accounts and 4-digit PIN access permissions</p>
+            </div>
+        </div>
+
+        <!-- Add Staff Account Form -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Create New Staff Account</h2>
+            </div>
+            <form id="create-staff-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="new-staff-name">Full Name</label>
+                        <input type="text" id="new-staff-name" class="form-control" required placeholder="Full Name">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="new-staff-pin">4-Digit Account PIN</label>
+                        <input type="password" id="new-staff-pin" class="form-control" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required placeholder="4-digit PIN" autocomplete="new-password">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="new-staff-role">Role</label>
+                        <select id="new-staff-role" class="form-select">
+                            <option value="staff" selected>Staff</option>
+                            <option value="owner">Owner / Admin</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: flex-end; margin-top: 8px;">
+                    <button type="submit" class="btn btn-primary">Create Account</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- User Accounts Table -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">Registered Accounts</h2>
+            </div>
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 35px;">No.</th>
+                            <th>Full Name</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                            <th>Account</th>
+                        </tr>
+                    </thead>
+                    <tbody id="staff-tbody">
+                        <tr>
+                            <td colspan="5" style="text-align: center; padding: 24px; color: var(--text-secondary);">
+                                Loading staff accounts...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </section>
+
+</main>
+
+<datalist id="customer-datalist"></datalist>
+
+<footer class="no-print" style="text-align: center; padding: 18px 16px; color: var(--text-secondary); font-size: 0.78rem; border-top: 1px solid var(--border); margin-top: 36px; background: var(--surface);">
+    <p><strong>Pazings Management System</strong> &bull; <span id="footer-user-label">Guest</span> &bull; 2026</p>
+</footer>
+
+<script src="assets/js/app.js"></script>
+</body>
+</html>

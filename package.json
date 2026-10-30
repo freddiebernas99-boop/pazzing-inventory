@@ -1,0 +1,13 @@
+{
+  "name": "pazings-inventory",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pazings Laundry Shop & Water Refilling Station Inventory and Sales Management System",
+  "main": "api/index.js",
+  "scripts": {
+    "dev": "node dev-server.js",
+    "start": "node dev-server.js",
+    "test": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/test_credentials_auth.ps1 && powershell -NoProfile -ExecutionPolicy Bypass -File tests/test_dynamic_rates_reports.ps1 && powershell -NoProfile -ExecutionPolicy Bypass -File tests/test_mobile_navigation.ps1 && powershell -NoProfile -ExecutionPolicy Bypass -File tests/test_no_emojis.ps1 && powershell -NoProfile -ExecutionPolicy Bypass -File tests/test_paid_unpaid_logic.ps1 && powershell -NoProfile -ExecutionPolicy Bypass -File tests/test_server.ps1"
+  }
+}
+
