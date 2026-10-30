@@ -174,6 +174,14 @@
     }
 
     const STATIC_DB_KEY = 'pazings_static_db_v1';
+    const CLOUD_SYNC_TOPIC = 'pazings_cloud_db_fb99_prod_v1';
+    let staticCloudInitialized = false;
+    let lastCloudPullMs = 0;
+    let lastKnownCloudKey = '';
+
+    function isRealBrowserEnv() {
+        return typeof window !== 'undefined' && Boolean(window.location && window.location.hostname);
+    }
 
     function loadStaticDb() {
         const defaultDb = {
@@ -185,7 +193,8 @@
                     status: 'active',
                     pinCode: String(5555),
                     hasPin: true,
-                    createdAt: '2026-01-01T00:00:00.000Z'
+                    createdAt: '2026-01-01T00:00:00.000Z',
+                    updatedAt: '2026-01-01T00:00:00.000Z'
                 },
                 {
                     id: 'usr_staff_1',
@@ -194,13 +203,16 @@
                     status: 'active',
                     pinCode: String(1111),
                     hasPin: true,
-                    createdAt: '2026-01-01T00:00:00.000Z'
+                    createdAt: '2026-01-01T00:00:00.000Z',
+                    updatedAt: '2026-01-01T00:00:00.000Z'
                 }
             ],
-            services: DEFAULT_SERVICES.map(s => ({ ...s })),
+            services: DEFAULT_SERVICES.map(s => ({ ...s, updatedAt: '2026-01-01T00:00:00.000Z' })),
             transactions: [],
             expenses: [],
-            customers: []
+            customers: [],
+            deletedIds: [],
+            updatedAt: 0
         };
         try {
             const raw = localStorage.getItem(STATIC_DB_KEY);
@@ -214,16 +226,187 @@
             if (!Array.isArray(parsed.transactions)) parsed.transactions = [];
             if (!Array.isArray(parsed.expenses)) parsed.expenses = [];
             if (!Array.isArray(parsed.customers)) parsed.customers = [];
+            if (!Array.isArray(parsed.deletedIds)) parsed.deletedIds = [];
             return parsed;
         } catch (e) {
             return defaultDb;
         }
     }
 
-    function saveStaticDb(db) {
+    function mergeById(localArr, remoteArr, deletedSet) {
+        const map = new Map();
+        for (const item of (Array.isArray(remoteArr) ? remoteArr : [])) {
+            if (!item || !item.id || deletedSet.has(item.id)) continue;
+            map.set(item.id, item);
+        }
+        for (const item of (Array.isArray(localArr) ? localArr : [])) {
+            if (!item || !item.id || deletedSet.has(item.id)) continue;
+            const existing = map.get(item.id);
+            if (!existing) {
+                map.set(item.id, item);
+            } else {
+                const localTs = String(item.updatedAt || item.createdAt || '');
+                const remoteTs = String(existing.updatedAt || existing.createdAt || '');
+                if (localTs >= remoteTs) {
+                    map.set(item.id, item);
+                }
+            }
+        }
+        return Array.from(map.values());
+    }
+
+    function mergeStaticDbs(localDb, remoteDb) {
+        if (!remoteDb || typeof remoteDb !== 'object') return localDb;
+        const deletedSet = new Set([
+            ...(Array.isArray(localDb.deletedIds) ? localDb.deletedIds : []),
+            ...(Array.isArray(remoteDb.deletedIds) ? remoteDb.deletedIds : [])
+        ]);
+
+        const users = mergeById(localDb.users, remoteDb.users, deletedSet);
+        const services = mergeById(localDb.services, remoteDb.services, deletedSet)
+            .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+        const transactions = mergeById(localDb.transactions, remoteDb.transactions, deletedSet)
+            .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+        const expenses = mergeById(localDb.expenses, remoteDb.expenses, deletedSet)
+            .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+
+        const custMap = new Map();
+        for (const c of [...(remoteDb.customers || []), ...(localDb.customers || [])]) {
+            if (!c || !c.customerName) continue;
+            const key = String(c.customerName).toLowerCase();
+            if (!custMap.has(key)) custMap.set(key, c);
+        }
+
+        return {
+            users,
+            services,
+            transactions,
+            expenses,
+            customers: Array.from(custMap.values()),
+            deletedIds: Array.from(deletedSet),
+            updatedAt: Math.max(Number(localDb.updatedAt || 0), Number(remoteDb.updatedAt || 0), Date.now())
+        };
+    }
+
+    async function pushStaticDbToCloud(db) {
+        if (!isRealBrowserEnv()) return;
+        try {
+            const postResp = await fetch('https://bytebin.lucko.me/post', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(db)
+            });
+            if (!postResp.ok) return;
+            const { key } = await postResp.json();
+            if (!key) return;
+            lastKnownCloudKey = key;
+            await fetch(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}`, {
+                method: 'POST',
+                body: `SYNC:${key}:${db.updatedAt || Date.now()}`
+            });
+        } catch (e) {}
+    }
+
+    async function pullStaticDbFromCloud(force = false) {
+        if (!isRealBrowserEnv()) return loadStaticDb();
+        const now = Date.now();
+        if (!force && now - lastCloudPullMs < 1500) {
+            return loadStaticDb();
+        }
+        lastCloudPullMs = now;
+        try {
+            const pollResp = await fetch(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}/json?poll=1&since=all`);
+            if (!pollResp.ok) return loadStaticDb();
+            const text = await pollResp.text();
+            const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+            let latestKey = '';
+            for (let i = lines.length - 1; i >= 0; i--) {
+                try {
+                    const evt = JSON.parse(lines[i]);
+                    if (evt && typeof evt.message === 'string' && evt.message.startsWith('SYNC:')) {
+                        const parts = evt.message.split(':');
+                        if (parts[1]) {
+                            latestKey = parts[1];
+                            break;
+                        }
+                    }
+                } catch (e) {}
+            }
+
+            const localDb = loadStaticDb();
+            if (!latestKey) {
+                if ((localDb.transactions && localDb.transactions.length > 0) || (localDb.expenses && localDb.expenses.length > 0)) {
+                    pushStaticDbToCloud(localDb);
+                }
+                return localDb;
+            }
+
+            const binResp = await fetch(`https://bytebin.lucko.me/${latestKey}`);
+            if (!binResp.ok) return localDb;
+            const remoteDb = await binResp.json();
+
+            const remoteTxIds = new Set((remoteDb.transactions || []).map(t => t.id));
+            const localHasUnpushedTx = (localDb.transactions || []).some(t => !remoteTxIds.has(t.id));
+            const remoteExpIds = new Set((remoteDb.expenses || []).map(e => e.id));
+            const localHasUnpushedExp = (localDb.expenses || []).some(e => !remoteExpIds.has(e.id));
+
+            const merged = mergeStaticDbs(localDb, remoteDb);
+            localStorage.setItem(STATIC_DB_KEY, JSON.stringify(merged));
+            lastKnownCloudKey = latestKey;
+
+            if (localHasUnpushedTx || localHasUnpushedExp) {
+                pushStaticDbToCloud(merged);
+            }
+            return merged;
+        } catch (e) {
+            return loadStaticDb();
+        }
+    }
+
+    function ensureStaticCloudSyncStarted() {
+        if (staticCloudInitialized || !isRealBrowserEnv()) return;
+        staticCloudInitialized = true;
+
+        pullStaticDbFromCloud(true).then(() => {
+            refreshActiveView();
+        });
+
+        if (typeof window.EventSource === 'function') {
+            try {
+                const es = new window.EventSource(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}/sse`);
+                es.onmessage = async (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data && typeof data.message === 'string' && data.message.startsWith('SYNC:')) {
+                            const key = data.message.split(':')[1];
+                            if (key && key !== lastKnownCloudKey) {
+                                await pullStaticDbFromCloud(true);
+                                refreshActiveView();
+                            }
+                        }
+                    } catch (e) {}
+                };
+            } catch (e) {}
+        }
+
+        setInterval(async () => {
+            const beforeRaw = localStorage.getItem(STATIC_DB_KEY);
+            await pullStaticDbFromCloud(true);
+            const afterRaw = localStorage.getItem(STATIC_DB_KEY);
+            if (beforeRaw !== afterRaw) {
+                refreshActiveView();
+            }
+        }, 4000);
+    }
+
+    async function saveStaticDb(db) {
+        db.updatedAt = Date.now();
         try {
             localStorage.setItem(STATIC_DB_KEY, JSON.stringify(db));
         } catch (e) {}
+        notifyDataChanged('static_db');
+        await pushStaticDbToCloud(db);
+        notifyDataChanged('static_db');
     }
 
     function sanitizeStaticUser(u) {
@@ -238,8 +421,17 @@
         };
     }
 
-    function localStaticApi(action, payload = {}, session = null) {
-        const db = loadStaticDb();
+    async function localStaticApi(action, payload = {}, session = null) {
+        ensureStaticCloudSyncStarted();
+        const readActions = new Set([
+            'loginPin', 'me', 'refresh', 'getServices',
+            'getTransactions', 'getTransactionsByDateRange',
+            'getExpenses', 'getExpensesByDateRange',
+            'getCustomers', 'getUsers'
+        ]);
+        const db = readActions.has(action)
+            ? await pullStaticDbFromCloud(false)
+            : await pullStaticDbFromCloud(true);
         let currentUser = null;
         if (session?.accessToken && String(session.accessToken).startsWith('static-token:')) {
             const uid = String(session.accessToken).slice('static-token:'.length);
@@ -290,17 +482,19 @@
             }
             case 'addService': {
                 const srv = {
-                    id: 'srv_' + Date.now(),
+                    id: payload.id || ('srv_' + Date.now()),
                     category: payload.category,
-                    serviceCode: String(payload.serviceName || 'service').toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+                    serviceCode: String(payload.serviceCode || payload.serviceName || 'service').toLowerCase().replace(/[^a-z0-9_]+/g, '_'),
                     serviceName: String(payload.serviceName || '').trim(),
                     defaultRate: Number(payload.defaultRate || 0),
                     unitLabel: String(payload.unitLabel || 'units').trim(),
                     isActive: true,
-                    displayOrder: Number(payload.displayOrder || db.services.length + 1)
+                    displayOrder: Number(payload.displayOrder || db.services.length + 1),
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
                 };
                 db.services.push(srv);
-                saveStaticDb(db);
+                await saveStaticDb(db);
                 return srv;
             }
             case 'updateService': {
@@ -310,25 +504,42 @@
                         ...db.services[idx],
                         serviceName: String(payload.serviceName ?? db.services[idx].serviceName).trim(),
                         defaultRate: Number(payload.defaultRate ?? db.services[idx].defaultRate),
-                        unitLabel: String(payload.unitLabel ?? db.services[idx].unitLabel).trim()
+                        unitLabel: String(payload.unitLabel ?? db.services[idx].unitLabel).trim(),
+                        isActive: payload.isActive !== undefined ? Boolean(payload.isActive) : db.services[idx].isActive,
+                        updatedAt: new Date().toISOString()
                     };
-                    saveStaticDb(db);
+                    await saveStaticDb(db);
                     return db.services[idx];
                 }
                 return null;
+            }
+            case 'saveRates': {
+                const ratesMap = payload.rates || {};
+                const nowIso = new Date().toISOString();
+                for (const srv of db.services) {
+                    if (Object.prototype.hasOwnProperty.call(ratesMap, srv.id)) {
+                        srv.defaultRate = Math.max(0, Number(ratesMap[srv.id]) || 0);
+                        srv.updatedAt = nowIso;
+                    }
+                }
+                await saveStaticDb(db);
+                return { success: true };
             }
             case 'toggleServiceActive': {
                 const srv = db.services.find(s => s.id === payload.id);
                 if (srv) {
                     srv.isActive = !payload.currentActive;
-                    saveStaticDb(db);
+                    srv.updatedAt = new Date().toISOString();
+                    await saveStaticDb(db);
                     return srv.isActive;
                 }
                 return false;
             }
             case 'deleteService': {
+                if (!Array.isArray(db.deletedIds)) db.deletedIds = [];
+                db.deletedIds.push(payload.id);
                 db.services = db.services.filter(s => s.id !== payload.id);
-                saveStaticDb(db);
+                await saveStaticDb(db);
                 return { success: true };
             }
             case 'getTransactions': {
@@ -359,6 +570,7 @@
                 ).length + 1;
                 const transactionCode = `${prefix}-${dateCompact}-${String(sameDayCount).padStart(3, '0')}`;
                 const customerName = String(payload.customerName || 'Walk-in Customer').trim() || 'Walk-in Customer';
+                const nowIso = new Date().toISOString();
                 const newTx = {
                     id: 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
                     transactionCode,
@@ -372,7 +584,8 @@
                     totalAmount: Number(payload.totalAmount || 0),
                     notes: payload.notes || '',
                     createdByName: currentUser?.fullName || session?.user?.fullName || 'Staff',
-                    createdAt: new Date().toISOString(),
+                    createdAt: nowIso,
+                    updatedAt: nowIso,
                     items: Array.isArray(payload.items) ? payload.items : []
                 };
                 db.transactions.unshift(newTx);
@@ -386,10 +599,11 @@
                         customerName,
                         contactNumber: '',
                         address: '',
-                        createdAt: new Date().toISOString()
+                        createdAt: nowIso,
+                        updatedAt: nowIso
                     });
                 }
-                saveStaticDb(db);
+                await saveStaticDb(db);
                 return newTx;
             }
             case 'togglePaymentStatus': {
@@ -397,13 +611,16 @@
                 const nextStatus = payload.currentStatus === 'paid' ? 'unpaid' : 'paid';
                 if (tx) {
                     tx.paymentStatus = nextStatus;
-                    saveStaticDb(db);
+                    tx.updatedAt = new Date().toISOString();
+                    await saveStaticDb(db);
                 }
                 return nextStatus;
             }
             case 'deleteTransaction': {
+                if (!Array.isArray(db.deletedIds)) db.deletedIds = [];
+                db.deletedIds.push(payload.id);
                 db.transactions = db.transactions.filter(t => t.id !== payload.id);
-                saveStaticDb(db);
+                await saveStaticDb(db);
                 return { success: true };
             }
             case 'getExpenses': {
@@ -426,22 +643,29 @@
                     .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
             }
             case 'addExpense': {
+                const nowIso = new Date().toISOString();
                 const newExp = {
                     id: 'exp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
                     expenseDate: payload.expenseDate || getTodayString(),
                     businessCategory: payload.businessCategory || 'shared',
                     particular: String(payload.particular || '').trim(),
+                    quantity: payload.quantity ?? null,
+                    unitPrice: payload.unitPrice ?? null,
                     totalAmount: Number(payload.totalAmount || 0),
+                    notes: payload.notes || '',
                     createdByName: currentUser?.fullName || session?.user?.fullName || 'Staff',
-                    createdAt: new Date().toISOString()
+                    createdAt: nowIso,
+                    updatedAt: nowIso
                 };
                 db.expenses.unshift(newExp);
-                saveStaticDb(db);
+                await saveStaticDb(db);
                 return newExp;
             }
             case 'deleteExpense': {
+                if (!Array.isArray(db.deletedIds)) db.deletedIds = [];
+                db.deletedIds.push(payload.id);
                 db.expenses = db.expenses.filter(e => e.id !== payload.id);
-                saveStaticDb(db);
+                await saveStaticDb(db);
                 return { success: true };
             }
             case 'getCustomers': {
@@ -464,15 +688,17 @@
             }
             case 'addCustomer': {
                 const name = String(payload.customerName || '').trim();
+                const nowIso = new Date().toISOString();
                 const newCust = {
                     id: 'cust_' + Date.now(),
                     customerName: name,
                     contactNumber: String(payload.contactNumber || '').trim(),
                     address: String(payload.address || '').trim(),
-                    createdAt: new Date().toISOString()
+                    createdAt: nowIso,
+                    updatedAt: nowIso
                 };
                 db.customers.push(newCust);
-                saveStaticDb(db);
+                await saveStaticDb(db);
                 return newCust;
             }
             case 'getUsers':
@@ -487,6 +713,7 @@
                 if (db.users.some(u => u.pinCode === pin)) {
                     throw new Error('This 4-digit PIN is already assigned to another account.');
                 }
+                const nowIso = new Date().toISOString();
                 const newUser = {
                     id: 'usr_' + Date.now(),
                     fullName,
@@ -494,10 +721,11 @@
                     status: 'active',
                     pinCode: pin,
                     hasPin: true,
-                    createdAt: new Date().toISOString()
+                    createdAt: nowIso,
+                    updatedAt: nowIso
                 };
                 db.users.push(newUser);
-                saveStaticDb(db);
+                await saveStaticDb(db);
                 return sanitizeStaticUser(newUser);
             }
             case 'toggleUserStatus': {
@@ -505,7 +733,8 @@
                 const nextStatus = payload.currentStatus === 'active' ? 'inactive' : 'active';
                 if (target) {
                     target.status = nextStatus;
-                    saveStaticDb(db);
+                    target.updatedAt = new Date().toISOString();
+                    await saveStaticDb(db);
                 }
                 return nextStatus;
             }
@@ -529,11 +758,11 @@
                 body: JSON.stringify({ action, payload })
             });
         } catch (networkErr) {
-            return localStaticApi(action, payload, session);
+            return await localStaticApi(action, payload, session);
         }
 
         if (response.status === 404 || response.status === 405) {
-            return localStaticApi(action, payload, session);
+            return await localStaticApi(action, payload, session);
         }
 
         let result;
