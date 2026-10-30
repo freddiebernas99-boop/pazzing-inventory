@@ -173,6 +173,347 @@
         } catch (e) {}
     }
 
+    const STATIC_DB_KEY = 'pazings_static_db_v1';
+
+    function loadStaticDb() {
+        const defaultDb = {
+            users: [
+                {
+                    id: 'usr_owner_1',
+                    fullName: 'Admin / Owner',
+                    role: 'owner',
+                    status: 'active',
+                    pinCode: String(5555),
+                    hasPin: true,
+                    createdAt: '2026-01-01T00:00:00.000Z'
+                },
+                {
+                    id: 'usr_staff_1',
+                    fullName: 'Store Staff',
+                    role: 'staff',
+                    status: 'active',
+                    pinCode: String(1111),
+                    hasPin: true,
+                    createdAt: '2026-01-01T00:00:00.000Z'
+                }
+            ],
+            services: DEFAULT_SERVICES.map(s => ({ ...s })),
+            transactions: [],
+            expenses: [],
+            customers: []
+        };
+        try {
+            const raw = localStorage.getItem(STATIC_DB_KEY);
+            if (!raw) {
+                localStorage.setItem(STATIC_DB_KEY, JSON.stringify(defaultDb));
+                return defaultDb;
+            }
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed.users) || parsed.users.length === 0) parsed.users = defaultDb.users;
+            if (!Array.isArray(parsed.services) || parsed.services.length === 0) parsed.services = defaultDb.services;
+            if (!Array.isArray(parsed.transactions)) parsed.transactions = [];
+            if (!Array.isArray(parsed.expenses)) parsed.expenses = [];
+            if (!Array.isArray(parsed.customers)) parsed.customers = [];
+            return parsed;
+        } catch (e) {
+            return defaultDb;
+        }
+    }
+
+    function saveStaticDb(db) {
+        try {
+            localStorage.setItem(STATIC_DB_KEY, JSON.stringify(db));
+        } catch (e) {}
+    }
+
+    function sanitizeStaticUser(u) {
+        if (!u) return null;
+        return {
+            id: u.id,
+            fullName: u.fullName,
+            role: u.role,
+            status: u.status || 'active',
+            hasPin: Boolean(u.pinCode),
+            createdAt: u.createdAt || new Date().toISOString()
+        };
+    }
+
+    function localStaticApi(action, payload = {}, session = null) {
+        const db = loadStaticDb();
+        let currentUser = null;
+        if (session?.accessToken && String(session.accessToken).startsWith('static-token:')) {
+            const uid = String(session.accessToken).slice('static-token:'.length);
+            currentUser = db.users.find(u => u.id === uid && u.status === 'active') || null;
+        }
+
+        switch (action) {
+            case 'loginPin': {
+                const role = String(payload.role || '').trim();
+                const pin = String(payload.pin || '').trim();
+                const matched = db.users.find(u => u.status === 'active' && u.pinCode === pin && (!role || u.role === role));
+                if (!matched) {
+                    const err = new Error('Invalid PIN for the selected role.');
+                    err.status = 401;
+                    throw err;
+                }
+                const userObj = sanitizeStaticUser(matched);
+                return {
+                    accessToken: `static-token:${matched.id}`,
+                    refreshToken: `static-refresh:${matched.id}`,
+                    user: userObj
+                };
+            }
+            case 'me':
+            case 'refresh': {
+                if (!currentUser && session?.user?.id) {
+                    currentUser = db.users.find(u => u.id === session.user.id && u.status === 'active') || null;
+                }
+                if (!currentUser) {
+                    const err = new Error('Session expired. Please sign in again.');
+                    err.status = 401;
+                    throw err;
+                }
+                const userObj = sanitizeStaticUser(currentUser);
+                return {
+                    accessToken: `static-token:${currentUser.id}`,
+                    refreshToken: `static-refresh:${currentUser.id}`,
+                    user: userObj
+                };
+            }
+            case 'logout':
+                return { success: true };
+            case 'getServices': {
+                const activeOnly = Boolean(payload.activeOnly);
+                return db.services
+                    .filter(s => !activeOnly || s.isActive)
+                    .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+            }
+            case 'addService': {
+                const srv = {
+                    id: 'srv_' + Date.now(),
+                    category: payload.category,
+                    serviceCode: String(payload.serviceName || 'service').toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+                    serviceName: String(payload.serviceName || '').trim(),
+                    defaultRate: Number(payload.defaultRate || 0),
+                    unitLabel: String(payload.unitLabel || 'units').trim(),
+                    isActive: true,
+                    displayOrder: Number(payload.displayOrder || db.services.length + 1)
+                };
+                db.services.push(srv);
+                saveStaticDb(db);
+                return srv;
+            }
+            case 'updateService': {
+                const idx = db.services.findIndex(s => s.id === payload.id);
+                if (idx !== -1) {
+                    db.services[idx] = {
+                        ...db.services[idx],
+                        serviceName: String(payload.serviceName ?? db.services[idx].serviceName).trim(),
+                        defaultRate: Number(payload.defaultRate ?? db.services[idx].defaultRate),
+                        unitLabel: String(payload.unitLabel ?? db.services[idx].unitLabel).trim()
+                    };
+                    saveStaticDb(db);
+                    return db.services[idx];
+                }
+                return null;
+            }
+            case 'toggleServiceActive': {
+                const srv = db.services.find(s => s.id === payload.id);
+                if (srv) {
+                    srv.isActive = !payload.currentActive;
+                    saveStaticDb(db);
+                    return srv.isActive;
+                }
+                return false;
+            }
+            case 'deleteService': {
+                db.services = db.services.filter(s => s.id !== payload.id);
+                saveStaticDb(db);
+                return { success: true };
+            }
+            case 'getTransactions': {
+                return db.transactions
+                    .filter(tx => {
+                        if (payload.filterDate && tx.transactionDate !== payload.filterDate) return false;
+                        if (payload.category && payload.category !== 'all' && tx.businessCategory !== payload.category) return false;
+                        return true;
+                    })
+                    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+            }
+            case 'getTransactionsByDateRange': {
+                return db.transactions
+                    .filter(tx => {
+                        if (payload.startDate && tx.transactionDate < payload.startDate) return false;
+                        if (payload.endDate && tx.transactionDate > payload.endDate) return false;
+                        if (payload.category && payload.category !== 'all' && tx.businessCategory !== payload.category) return false;
+                        return true;
+                    })
+                    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+            }
+            case 'addTransaction': {
+                const txDate = payload.transactionDate || getTodayString();
+                const prefix = payload.businessCategory === 'water' ? 'WTR' : 'LND';
+                const dateCompact = txDate.replace(/-/g, '');
+                const sameDayCount = db.transactions.filter(
+                    t => t.businessCategory === payload.businessCategory && t.transactionDate === txDate
+                ).length + 1;
+                const transactionCode = `${prefix}-${dateCompact}-${String(sameDayCount).padStart(3, '0')}`;
+                const customerName = String(payload.customerName || 'Walk-in Customer').trim() || 'Walk-in Customer';
+                const newTx = {
+                    id: 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                    transactionCode,
+                    businessCategory: payload.businessCategory,
+                    transactionDate: txDate,
+                    transactionTime: payload.transactionTime || getCurrentTimeString(),
+                    customerName,
+                    serviceType: payload.serviceType || 'Standard',
+                    orderType: payload.orderType || 'Walk-in',
+                    paymentStatus: payload.paymentStatus || 'paid',
+                    totalAmount: Number(payload.totalAmount || 0),
+                    notes: payload.notes || '',
+                    createdByName: currentUser?.fullName || session?.user?.fullName || 'Staff',
+                    createdAt: new Date().toISOString(),
+                    items: Array.isArray(payload.items) ? payload.items : []
+                };
+                db.transactions.unshift(newTx);
+
+                const existingCustomer = db.customers.find(
+                    c => c.customerName.toLowerCase() === customerName.toLowerCase()
+                );
+                if (!existingCustomer) {
+                    db.customers.push({
+                        id: 'cust_' + Date.now(),
+                        customerName,
+                        contactNumber: '',
+                        address: '',
+                        createdAt: new Date().toISOString()
+                    });
+                }
+                saveStaticDb(db);
+                return newTx;
+            }
+            case 'togglePaymentStatus': {
+                const tx = db.transactions.find(t => t.id === payload.id);
+                const nextStatus = payload.currentStatus === 'paid' ? 'unpaid' : 'paid';
+                if (tx) {
+                    tx.paymentStatus = nextStatus;
+                    saveStaticDb(db);
+                }
+                return nextStatus;
+            }
+            case 'deleteTransaction': {
+                db.transactions = db.transactions.filter(t => t.id !== payload.id);
+                saveStaticDb(db);
+                return { success: true };
+            }
+            case 'getExpenses': {
+                return db.expenses
+                    .filter(exp => {
+                        if (payload.filterDate && exp.expenseDate !== payload.filterDate) return false;
+                        if (payload.category && payload.category !== 'all' && exp.businessCategory !== payload.category) return false;
+                        return true;
+                    })
+                    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+            }
+            case 'getExpensesByDateRange': {
+                return db.expenses
+                    .filter(exp => {
+                        if (payload.startDate && exp.expenseDate < payload.startDate) return false;
+                        if (payload.endDate && exp.expenseDate > payload.endDate) return false;
+                        if (payload.category && payload.category !== 'all' && exp.businessCategory !== payload.category) return false;
+                        return true;
+                    })
+                    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+            }
+            case 'addExpense': {
+                const newExp = {
+                    id: 'exp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                    expenseDate: payload.expenseDate || getTodayString(),
+                    businessCategory: payload.businessCategory || 'shared',
+                    particular: String(payload.particular || '').trim(),
+                    totalAmount: Number(payload.totalAmount || 0),
+                    createdByName: currentUser?.fullName || session?.user?.fullName || 'Staff',
+                    createdAt: new Date().toISOString()
+                };
+                db.expenses.unshift(newExp);
+                saveStaticDb(db);
+                return newExp;
+            }
+            case 'deleteExpense': {
+                db.expenses = db.expenses.filter(e => e.id !== payload.id);
+                saveStaticDb(db);
+                return { success: true };
+            }
+            case 'getCustomers': {
+                return db.customers.map(c => {
+                    const custTxs = db.transactions.filter(
+                        t => String(t.customerName || '').toLowerCase() === c.customerName.toLowerCase()
+                    );
+                    const totalSpent = custTxs.reduce((sum, t) => sum + Number(t.totalAmount || 0), 0);
+                    const lastVisit = custTxs.reduce(
+                        (latest, t) => (!latest || t.transactionDate > latest ? t.transactionDate : latest),
+                        null
+                    );
+                    return {
+                        ...c,
+                        transactionCount: custTxs.length,
+                        totalSpent,
+                        lastVisit
+                    };
+                });
+            }
+            case 'addCustomer': {
+                const name = String(payload.customerName || '').trim();
+                const newCust = {
+                    id: 'cust_' + Date.now(),
+                    customerName: name,
+                    contactNumber: String(payload.contactNumber || '').trim(),
+                    address: String(payload.address || '').trim(),
+                    createdAt: new Date().toISOString()
+                };
+                db.customers.push(newCust);
+                saveStaticDb(db);
+                return newCust;
+            }
+            case 'getUsers':
+                return db.users.map(sanitizeStaticUser);
+            case 'createUser': {
+                const fullName = String(payload.fullName || '').trim();
+                const pin = String(payload.pin || '').trim();
+                const role = payload.role === 'owner' ? 'owner' : 'staff';
+                if (!fullName || !/^\d{4}$/.test(pin)) {
+                    throw new Error('Full name and a 4-digit PIN are required.');
+                }
+                if (db.users.some(u => u.pinCode === pin)) {
+                    throw new Error('This 4-digit PIN is already assigned to another account.');
+                }
+                const newUser = {
+                    id: 'usr_' + Date.now(),
+                    fullName,
+                    role,
+                    status: 'active',
+                    pinCode: pin,
+                    hasPin: true,
+                    createdAt: new Date().toISOString()
+                };
+                db.users.push(newUser);
+                saveStaticDb(db);
+                return sanitizeStaticUser(newUser);
+            }
+            case 'toggleUserStatus': {
+                const target = db.users.find(u => u.id === payload.id);
+                const nextStatus = payload.currentStatus === 'active' ? 'inactive' : 'active';
+                if (target) {
+                    target.status = nextStatus;
+                    saveStaticDb(db);
+                }
+                return nextStatus;
+            }
+            default:
+                return null;
+        }
+    }
+
     async function apiRequest(action, payload = {}, retry = true) {
         const session = getSession();
         const headers = { 'Content-Type': 'application/json' };
@@ -180,11 +521,21 @@
             headers.Authorization = `Bearer ${session.accessToken}`;
         }
 
-        const response = await fetch('/api', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ action, payload })
-        });
+        let response;
+        try {
+            response = await fetch('/api', {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ action, payload })
+            });
+        } catch (networkErr) {
+            return localStaticApi(action, payload, session);
+        }
+
+        if (response.status === 404 || response.status === 405) {
+            return localStaticApi(action, payload, session);
+        }
+
         let result;
         try {
             result = await response.json();
