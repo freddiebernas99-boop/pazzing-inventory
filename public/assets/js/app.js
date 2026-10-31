@@ -1404,7 +1404,7 @@
         });
 
         // Restrict owner views from staff
-        const ownerViews = ['customers', 'rates', 'staff'];
+        const ownerViews = ['rates', 'staff'];
         if (!isOwner && ownerViews.includes(viewName)) {
             showAlert('Access restricted to business owners.', 'danger');
             switchView('dashboard');
@@ -1433,9 +1433,6 @@
                 break;
             case 'reports':
                 renderReportsView();
-                break;
-            case 'customers':
-                renderCustomersView();
                 break;
             case 'rates':
                 renderRatesView();
@@ -2662,46 +2659,6 @@
         return String(text).replace(/"/g, '""');
     }
 
-    // --- VIEW 7: CUSTOMERS (OWNER ONLY) ---
-    async function renderCustomersView() {
-        const tbody = document.getElementById('customers-tbody');
-        const datalist = document.getElementById('customer-datalist');
-        if (!tbody) return;
-
-        const customers = await DataService.getCustomers();
-
-        if (datalist) {
-            datalist.innerHTML = customers.map(c => `<option value="${escapeHtml(c.name)}">`).join('');
-        }
-
-        if (customers.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="7" style="text-align: center; padding: 24px; color: var(--text-secondary);">
-                        No customer records created yet. Customers are automatically indexed when transactions are recorded.
-                    </td>
-                </tr>
-            `;
-            return;
-        }
-
-        let rowsHtml = '';
-        customers.forEach((c, idx) => {
-            rowsHtml += `
-                <tr>
-                    <td style="color: var(--text-secondary); text-align: center;">${idx + 1}</td>
-                    <td style="font-weight: 500;">${escapeHtml(c.name)}</td>
-                    <td style="color: var(--text-secondary);">${escapeHtml(c.contactNumber || '--')}</td>
-                    <td style="color: var(--text-secondary);">${escapeHtml(c.address || '--')}</td>
-                    <td style="text-align: center;">${c.totalOrders || 1}</td>
-                    <td style="text-align: right; font-weight: 600; color: var(--navy);">${formatPeso(c.lifetimeSpend || 0)}</td>
-                    <td style="color: var(--text-secondary);">${formatDate(c.lastOrderDate) || '--'}</td>
-                </tr>
-            `;
-        });
-        tbody.innerHTML = rowsHtml;
-    }
-
     // --- VIEW 8: SERVICE RATES (OWNER ONLY) ---
     async function renderRatesView() {
         await DataService.getServices();
@@ -2980,7 +2937,6 @@
                 if (repDateInput) repDateInput.value = date;
 
                 loadWaterTransactions();
-                renderCustomersView();
                 showAlert(`Saved water transaction ${created.transactionCode} (${formatPeso(total)})`, 'success');
             });
         }
@@ -3075,7 +3031,6 @@
                 if (repDateInput) repDateInput.value = date;
 
                 loadLaundryTransactions();
-                renderCustomersView();
                 showAlert(`Saved laundry transaction ${created.transactionCode} (${formatPeso(total)})`, 'success');
             });
         }
@@ -3404,7 +3359,6 @@
                     } else {
                         await refreshActiveView();
                     }
-                    renderCustomersView();
                 } catch (err) {
                     showAlert(err.message || 'Error updating transaction.', 'danger');
                 } finally {
@@ -3477,9 +3431,6 @@
                 break;
             case 'reports':
                 await renderReportsView();
-                break;
-            case 'customers':
-                await renderCustomersView();
                 break;
             case 'rates':
                 await renderRatesView();

@@ -28,8 +28,8 @@ Assert-Contains $html 'aria-controls="navLinks"' "aria-controls present on navTo
 Assert-Contains $html 'class="nav-actions"' "nav-actions positioning container present"
 Assert-Contains $html 'id="navLinks"' "Navigation links container present (id='navLinks')"
 
-# All 8 Navigation items present with data-view
-$destinations = @('dashboard', 'water', 'laundry', 'expenses', 'reports', 'customers', 'rates', 'staff')
+# All Navigation items present with data-view
+$destinations = @('dashboard', 'water', 'laundry', 'expenses', 'reports', 'rates', 'staff')
 foreach ($dest in $destinations) {
     Assert-Contains $html "data-view=`"$dest`"" "Navigation button for view '$dest' present"
 }

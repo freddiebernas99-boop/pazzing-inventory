@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Pazings Inventory & Sales Management</title>
-    <link rel="stylesheet" href="assets/css/style.css?v=20261031-1">
-    <link rel="stylesheet" href="assets/css/print.css?v=20261031-1" media="print">
+    <link rel="stylesheet" href="assets/css/style.css?v=20261031-2">
+    <link rel="stylesheet" href="assets/css/print.css?v=20261031-2" media="print">
 </head>
 <body>
 
@@ -33,7 +33,6 @@
                 <li role="none"><button type="button" class="nav-link" data-view="reports" role="menuitem">Reports</button></li>
 
                 <!-- Owner Only Navigation Items -->
-                <li class="owner-only" style="display: none;" role="none"><button type="button" class="nav-link" data-view="customers" role="menuitem">Customers</button></li>
                 <li class="owner-only" style="display: none;" role="none"><button type="button" class="nav-link" data-view="rates" role="menuitem">Rates</button></li>
                 <li class="owner-only" style="display: none;" role="none"><button type="button" class="nav-link" data-view="staff" role="menuitem">Staff</button></li>
 
@@ -839,48 +838,6 @@
     </section>
 
     <!-- ======================================================== -->
-    <!-- VIEW 7: CUSTOMERS (OWNER ONLY) -->
-    <!-- ======================================================== -->
-    <section id="view-customers" class="app-view" style="display: none;">
-        <div class="page-header">
-            <div>
-                <h1 class="page-title">Customers</h1>
-                <p class="page-subtitle">Directory of saved customer records and order histories</p>
-            </div>
-        </div>
-
-        <div class="card">
-            <div class="card-header">
-                <h2 class="card-title">Customer Records</h2>
-                <input type="text" id="customer-search-input" class="form-control" style="max-width: 200px; min-height: 30px; padding: 4px 8px;" placeholder="Search customer...">
-            </div>
-
-            <div class="table-responsive">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th style="width: 35px;">No.</th>
-                            <th>Name</th>
-                            <th>Contact Phone</th>
-                            <th>Address</th>
-                            <th style="text-align: center;">Orders</th>
-                            <th style="text-align: right;">Total Spend</th>
-                            <th>Last Order</th>
-                        </tr>
-                    </thead>
-                    <tbody id="customers-tbody">
-                        <tr>
-                            <td colspan="7" style="text-align: center; padding: 24px; color: var(--text-secondary);">
-                                No customer records found.
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </section>
-
-    <!-- ======================================================== -->
     <!-- VIEW 8: SERVICE RATES (OWNER ONLY) -->
     <!-- ======================================================== -->
     <section id="view-rates" class="app-view" style="display: none;">
@@ -1165,6 +1122,6 @@
     <p><strong>Pazings Management System</strong> &bull; <span id="footer-user-label">Guest</span> &bull; 2026</p>
 </footer>
 
-<script src="assets/js/app.js?v=20261031-1"></script>
+<script src="assets/js/app.js?v=20261031-2"></script>
 </body>
 </html>
