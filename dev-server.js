@@ -303,6 +303,28 @@ function handleLocalApi(req, res, body) {
         return sendJson(200, tx.paymentStatus);
     }
 
+    if (action === 'updateTransaction') {
+        const tx = (db.transactions || []).find(t => t.id === payload.id);
+        if (!tx) return sendJson(404, { error: 'Transaction not found.' });
+        if (payload.transactionDate !== undefined) tx.transactionDate = String(payload.transactionDate).trim() || tx.transactionDate;
+        if (payload.customerName !== undefined) tx.customerName = String(payload.customerName || 'Walk-in Customer').trim() || 'Walk-in Customer';
+        if (payload.totalAmount !== undefined) tx.totalAmount = Number(payload.totalAmount) || 0;
+        if (payload.paymentStatus !== undefined) tx.paymentStatus = payload.paymentStatus === 'unpaid' ? 'unpaid' : 'paid';
+        if (payload.items !== undefined) tx.items = Array.isArray(payload.items) ? payload.items : tx.items;
+        if (payload.notes !== undefined) tx.notes = String(payload.notes || '').trim();
+        tx.updatedAt = new Date().toISOString();
+        recalculateCustomers(db);
+        writeLocalDb(db);
+        return sendJson(200, tx);
+    }
+
+    if (action === 'deleteTransaction') {
+        db.transactions = (db.transactions || []).filter(t => t.id !== payload.id);
+        recalculateCustomers(db);
+        writeLocalDb(db);
+        return sendJson(200, { success: true });
+    }
+
     if (action === 'getExpenses') {
         const filterDate = payload.filterDate || null;
         const category = payload.category || null;
@@ -334,13 +356,6 @@ function handleLocalApi(req, res, body) {
     // Owner-only actions
     if (currentUser.role !== 'owner') {
         return sendJson(403, { error: 'Owner authorization required.' });
-    }
-
-    if (action === 'deleteTransaction') {
-        db.transactions = (db.transactions || []).filter(t => t.id !== payload.id);
-        recalculateCustomers(db);
-        writeLocalDb(db);
-        return sendJson(200, { success: true });
     }
 
     if (action === 'deleteExpense') {

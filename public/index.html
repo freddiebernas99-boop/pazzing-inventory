@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Pazings Inventory & Sales Management</title>
-    <link rel="stylesheet" href="assets/css/style.css?v=20261030-5">
-    <link rel="stylesheet" href="assets/css/print.css?v=20261030-5" media="print">
+    <link rel="stylesheet" href="assets/css/style.css?v=20261031-1">
+    <link rel="stylesheet" href="assets/css/print.css?v=20261031-1" media="print">
 </head>
 <body>
 
@@ -178,11 +178,12 @@
                             <th>Customer Name</th>
                             <th style="text-align: right;">Amount</th>
                             <th>Status</th>
+                            <th class="no-print" style="text-align: center; width: 110px;">Action</th>
                         </tr>
                     </thead>
                     <tbody id="dashboard-recent-tbody">
                         <tr>
-                            <td colspan="6" style="text-align: center; padding: 24px; color: var(--text-secondary);">
+                            <td colspan="7" style="text-align: center; padding: 24px; color: var(--text-secondary);">
                                 Loading transactions...
                             </td>
                         </tr>
@@ -299,7 +300,7 @@
                             <th>Items</th>
                             <th style="text-align: right;">Total</th>
                             <th>Status</th>
-                            <th class="owner-only no-print" style="text-align: center; width: 60px; display: none;">Action</th>
+                            <th class="no-print" style="text-align: center; width: 110px;">Action</th>
                         </tr>
                     </thead>
                     <tbody id="water-tbody">
@@ -422,7 +423,7 @@
                             <th>Services / Items</th>
                             <th style="text-align: right;">Total</th>
                             <th>Status</th>
-                            <th class="owner-only no-print" style="text-align: center; width: 60px; display: none;">Action</th>
+                            <th class="no-print" style="text-align: center; width: 110px;">Action</th>
                         </tr>
                     </thead>
                     <tbody id="laundry-tbody">
@@ -752,11 +753,12 @@
                                 <th>Items Breakdown</th>
                                 <th style="text-align: right;">Amount</th>
                                 <th>Status</th>
+                                <th class="no-print" style="text-align: center; width: 110px;">Action</th>
                             </tr>
                         </thead>
                         <tbody id="rep-water-tx-tbody">
                             <tr>
-                                <td colspan="6" style="text-align: center; padding: 24px; color: var(--text-secondary);">
+                                <td colspan="7" style="text-align: center; padding: 24px; color: var(--text-secondary);">
                                     No water transactions recorded for this date.
                                 </td>
                             </tr>
@@ -801,11 +803,12 @@
                                 <th>Services / Items</th>
                                 <th style="text-align: right;">Amount</th>
                                 <th>Status</th>
+                                <th class="no-print" style="text-align: center; width: 110px;">Action</th>
                             </tr>
                         </thead>
                         <tbody id="rep-laundry-tx-tbody">
                             <tr>
-                                <td colspan="6" style="text-align: center; padding: 24px; color: var(--text-secondary);">
+                                <td colspan="7" style="text-align: center; padding: 24px; color: var(--text-secondary);">
                                     No laundry transactions recorded for this date.
                                 </td>
                             </tr>
@@ -1101,6 +1104,59 @@
 
     </section>
 
+    <!-- Modal: Edit Transaction (Staff & Owner) -->
+    <div id="edit-transaction-modal" class="modal-overlay no-print" style="display: none;">
+        <div class="modal-card" style="max-width: 560px;">
+            <div class="modal-header">
+                <h3 class="modal-title">Edit Transaction <span id="edit-tx-code-label" style="font-size: 0.82rem; font-weight: 600; color: var(--blue); margin-left: 6px;"></span></h3>
+                <button type="button" class="modal-close-btn" id="close-edit-tx-btn">&times;</button>
+            </div>
+            <form id="edit-transaction-form">
+                <input type="hidden" id="edit-tx-id">
+                <input type="hidden" id="edit-tx-category">
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="edit-tx-date">Date</label>
+                        <input type="date" id="edit-tx-date" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="edit-tx-customer">Customer Name</label>
+                        <input type="text" id="edit-tx-customer" class="form-control" list="customer-datalist" placeholder="Walk-in or Client Name" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="edit-tx-payment-status">Payment Status</label>
+                        <select id="edit-tx-payment-status" class="form-select">
+                            <option value="paid">Paid</option>
+                            <option value="unpaid">Unpaid / Balance</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Services / Items Quantities</label>
+                    <div class="qty-grid" id="edit-tx-services-container"></div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="edit-tx-notes">Notes (Optional)</label>
+                    <input type="text" id="edit-tx-notes" class="form-control" placeholder="Optional notes">
+                </div>
+
+                <div class="total-save-box" style="margin-top: 12px;">
+                    <div>
+                        <div class="total-label">Updated Total</div>
+                        <div class="total-value" id="edit-tx-total-display">₱0.00</div>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button type="button" class="btn btn-secondary" id="cancel-edit-tx-btn">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="save-edit-tx-btn">Save Changes</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
 </main>
 
 <datalist id="customer-datalist"></datalist>
@@ -1109,6 +1165,6 @@
     <p><strong>Pazings Management System</strong> &bull; <span id="footer-user-label">Guest</span> &bull; 2026</p>
 </footer>
 
-<script src="assets/js/app.js?v=20261030-5"></script>
+<script src="assets/js/app.js?v=20261031-1"></script>
 </body>
 </html>

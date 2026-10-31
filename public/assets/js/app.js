@@ -503,7 +503,7 @@
         ensureStaticCloudSyncStarted();
         const writeActions = new Set([
             'addService', 'updateService', 'saveRates', 'toggleServiceActive', 'deleteService',
-            'addTransaction', 'togglePaymentStatus', 'deleteTransaction',
+            'addTransaction', 'updateTransaction', 'togglePaymentStatus', 'deleteTransaction',
             'addExpense', 'deleteExpense', 'addCustomer', 'createUser', 'toggleUserStatus'
         ]);
         const db = writeActions.has(action) && lastKnownCloudKey
@@ -682,6 +682,44 @@
                 }
                 await saveStaticDb(db);
                 return newTx;
+            }
+            case 'updateTransaction': {
+                const idx = db.transactions.findIndex(t => t.id === payload.id);
+                if (idx === -1) return null;
+                const nowIso = new Date().toISOString();
+                const existing = db.transactions[idx];
+                const customerName = payload.customerName !== undefined
+                    ? (String(payload.customerName || 'Walk-in Customer').trim() || 'Walk-in Customer')
+                    : existing.customerName;
+                const updatedTx = {
+                    ...existing,
+                    transactionDate: payload.transactionDate !== undefined ? String(payload.transactionDate).trim() : existing.transactionDate,
+                    customerName,
+                    paymentStatus: payload.paymentStatus !== undefined ? (payload.paymentStatus === 'unpaid' ? 'unpaid' : 'paid') : existing.paymentStatus,
+                    totalAmount: payload.totalAmount !== undefined ? Number(payload.totalAmount || 0) : existing.totalAmount,
+                    notes: payload.notes !== undefined ? String(payload.notes || '').trim() : existing.notes,
+                    items: Array.isArray(payload.items) ? payload.items : existing.items,
+                    updatedAt: nowIso
+                };
+                db.transactions[idx] = updatedTx;
+
+                if (customerName && customerName.toLowerCase() !== 'walk-in customer' && customerName.toLowerCase() !== 'walk-in') {
+                    const existingCustomer = db.customers.find(
+                        c => String(c.customerName || '').toLowerCase() === customerName.toLowerCase()
+                    );
+                    if (!existingCustomer) {
+                        db.customers.push({
+                            id: 'cust_' + Date.now(),
+                            customerName,
+                            contactNumber: '',
+                            address: '',
+                            createdAt: nowIso,
+                            updatedAt: nowIso
+                        });
+                    }
+                }
+                await saveStaticDb(db);
+                return updatedTx;
             }
             case 'togglePaymentStatus': {
                 const tx = db.transactions.find(t => t.id === payload.id);
@@ -1121,6 +1159,20 @@
 
         async getTransactions(filterDate = null, category = null) {
             return apiRequest('getTransactions', { filterDate, category });
+        },
+
+        async updateTransaction(txId, txData) {
+            const updated = await apiRequest('updateTransaction', {
+                id: txId,
+                transactionDate: txData.transactionDate,
+                customerName: txData.customerName,
+                totalAmount: Number(txData.totalAmount) || 0,
+                paymentStatus: txData.paymentStatus || 'paid',
+                items: txData.items || [],
+                notes: txData.notes || ''
+            });
+            notifyDataChanged('transactions');
+            return updated;
         },
 
         async deleteTransaction(txId) {
@@ -1585,7 +1637,7 @@
         if (txList.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="6" style="text-align: center; padding: 24px; color: var(--text-secondary);">
+                    <td colspan="7" style="text-align: center; padding: 24px; color: var(--text-secondary);">
                         No transactions recorded today yet. Select Water Refilling or Laundry to record one.
                     </td>
                 </tr>
@@ -1611,6 +1663,13 @@
                 .map(item => `${item.itemName} (${item.quantity} × ${formatPeso(item.unitPrice)})`)
                 .join(', ');
 
+            const actionBtns = `
+                <div style="display: flex; gap: 4px; justify-content: center;">
+                    <button type="button" class="btn btn-secondary btn-sm edit-tx-btn" data-id="${escapeHtml(t.id)}">Edit</button>
+                    <button type="button" class="btn btn-danger btn-sm delete-tx-btn" data-id="${escapeHtml(t.id)}" data-code="${escapeHtml(t.transactionCode || '')}">Delete</button>
+                </div>
+            `;
+
             rowsHtml += `
                 <tr>
                     <td style="color: var(--text-secondary);">${escapeHtml(t.transactionTime || '--:--')}</td>
@@ -1622,21 +1681,14 @@
                     </td>
                     <td style="text-align: right; font-weight: 600; color: var(--navy);">${formatPeso(t.totalAmount)}</td>
                     <td>${statusBadge}</td>
+                    <td class="no-print" style="text-align: center;">${actionBtns}</td>
                 </tr>
             `;
         });
 
         tbody.innerHTML = rowsHtml;
 
-        // Attach payment status toggle on recent transactions
-        tbody.querySelectorAll('.toggle-payment').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const id = e.currentTarget.getAttribute('data-id');
-                const status = e.currentTarget.getAttribute('data-status');
-                await DataService.togglePaymentStatus(id, status);
-                renderDashboard();
-            });
-        });
+        attachTransactionActionListeners(tbody, () => renderDashboard(), txList);
     }
 
     // --- VIEW 3: WATER REFILLING ---
@@ -1764,7 +1816,6 @@
             return;
         }
 
-        const isOwner = AppState.currentUser && AppState.currentUser.role === 'owner';
         let rowsHtml = '';
 
         txList.forEach((t, idx) => {
@@ -1782,9 +1833,12 @@
             const statusBadge = t.paymentStatus === 'paid'
                 ? `<button type="button" class="badge badge-paid toggle-payment" data-id="${t.id}" data-status="paid" style="border:none; cursor:pointer;">Paid</button>`
                 : `<button type="button" class="badge badge-unpaid toggle-payment" data-id="${t.id}" data-status="unpaid" style="border:none; cursor:pointer;">Unpaid</button>`;
-            const deleteButton = isOwner
-                ? `<button type="button" class="btn btn-danger btn-sm delete-tx-btn" data-id="${t.id}" data-code="${escapeHtml(t.transactionCode || '')}">Delete</button>`
-                : '';
+            const actionButtons = `
+                <div style="display: flex; gap: 4px; justify-content: center;">
+                    <button type="button" class="btn btn-secondary btn-sm edit-tx-btn" data-id="${escapeHtml(t.id)}">Edit</button>
+                    <button type="button" class="btn btn-danger btn-sm delete-tx-btn" data-id="${escapeHtml(t.id)}" data-code="${escapeHtml(t.transactionCode || '')}">Delete</button>
+                </div>
+            `;
 
             rowsHtml += `
                 <tr>
@@ -1797,7 +1851,7 @@
                     <td style="font-size: 0.82rem; color: var(--text-secondary);">${escapeHtml(itemSummaries || 'Water')}</td>
                     <td style="text-align: right; font-weight: 600; color: var(--navy);">${formatPeso(amount)}</td>
                     <td>${statusBadge}</td>
-                    ${isOwner ? `<td style="text-align: center;">${deleteButton}</td>` : ''}
+                    <td class="no-print" style="text-align: center;">${actionButtons}</td>
                 </tr>
             `;
         });
@@ -1809,7 +1863,7 @@
         if (summaryPaidEl) summaryPaidEl.textContent = formatPeso(dayPaid);
         if (summaryUnpaidEl) summaryUnpaidEl.textContent = formatPeso(dayUnpaid);
 
-        attachTransactionActionListeners(tbody, () => loadWaterTransactions());
+        attachTransactionActionListeners(tbody, () => loadWaterTransactions(), txList);
     }
 
     // --- VIEW 4: LAUNDRY ---
@@ -1933,7 +1987,6 @@
             return;
         }
 
-        const isOwner = AppState.currentUser && AppState.currentUser.role === 'owner';
         let rowsHtml = '';
 
         txList.forEach((t, idx) => {
@@ -1951,9 +2004,12 @@
                 ? `<button type="button" class="badge badge-paid toggle-payment" data-id="${t.id}" data-status="paid" style="border:none; cursor:pointer;">Paid</button>`
                 : `<button type="button" class="badge badge-unpaid toggle-payment" data-id="${t.id}" data-status="unpaid" style="border:none; cursor:pointer;">Unpaid</button>`;
 
-            const deleteBtn = isOwner
-                ? `<button type="button" class="btn btn-danger btn-sm delete-tx-btn" data-id="${escapeHtml(t.id)}" data-code="${escapeHtml(t.transactionCode || '')}">Delete</button>`
-                : '';
+            const actionBtns = `
+                <div style="display: flex; gap: 4px; justify-content: center;">
+                    <button type="button" class="btn btn-secondary btn-sm edit-tx-btn" data-id="${escapeHtml(t.id)}">Edit</button>
+                    <button type="button" class="btn btn-danger btn-sm delete-tx-btn" data-id="${escapeHtml(t.id)}" data-code="${escapeHtml(t.transactionCode || '')}">Delete</button>
+                </div>
+            `;
 
             rowsHtml += `
                 <tr>
@@ -1966,7 +2022,7 @@
                     <td style="font-size: 0.82rem; color: var(--text-secondary);">${escapeHtml(itemSummaries || 'Laundry')}</td>
                     <td style="text-align: right; font-weight: 600; color: var(--navy);">${formatPeso(amt)}</td>
                     <td>${statusBadge}</td>
-                    ${isOwner ? `<td style="text-align: center;">${deleteBtn}</td>` : ''}
+                    <td class="no-print" style="text-align: center;">${actionBtns}</td>
                 </tr>
             `;
         });
@@ -1978,16 +2034,144 @@
         if (summaryPaidEl) summaryPaidEl.textContent = formatPeso(dayPaid);
         if (summaryUnpaidEl) summaryUnpaidEl.textContent = formatPeso(dayUnpaid);
 
-        attachTransactionActionListeners(tbody, () => loadLaundryTransactions());
+        attachTransactionActionListeners(tbody, () => loadLaundryTransactions(), txList);
     }
 
-    function attachTransactionActionListeners(tbody, reloadCallback) {
+    let currentEditTxReloadCallback = null;
+
+    function calculateEditTransactionTotal() {
+        let total = 0;
+        document.querySelectorAll('#edit-tx-services-container .edit-tx-qty-input').forEach(inp => {
+            const qty = Number(inp.value) || 0;
+            const rate = Number(inp.getAttribute('data-service-rate')) || 0;
+            if (qty > 0) {
+                total += (qty * rate);
+            }
+        });
+        const totalEl = document.getElementById('edit-tx-total-display');
+        if (totalEl) {
+            totalEl.textContent = formatPeso(total);
+        }
+        return total;
+    }
+
+    async function openEditTransactionModal(tx, reloadCallback) {
+        if (!tx) return;
+        currentEditTxReloadCallback = reloadCallback || (() => refreshActiveView());
+
+        if (!AppState.services || AppState.services.length === 0) {
+            await DataService.getServices();
+        }
+
+        const modal = document.getElementById('edit-transaction-modal');
+        const idInput = document.getElementById('edit-tx-id');
+        const catInput = document.getElementById('edit-tx-category');
+        const codeLabel = document.getElementById('edit-tx-code-label');
+        const dateInput = document.getElementById('edit-tx-date');
+        const custInput = document.getElementById('edit-tx-customer');
+        const payStatusSelect = document.getElementById('edit-tx-payment-status');
+        const notesInput = document.getElementById('edit-tx-notes');
+        const container = document.getElementById('edit-tx-services-container');
+
+        if (!modal || !container) return;
+
+        if (idInput) idInput.value = tx.id;
+        if (catInput) catInput.value = tx.businessCategory || 'water';
+        if (codeLabel) codeLabel.textContent = tx.transactionCode ? `(${tx.transactionCode})` : '';
+        if (dateInput) dateInput.value = tx.transactionDate || getTodayString();
+        if (custInput) custInput.value = tx.customerName || '';
+        if (payStatusSelect) payStatusSelect.value = tx.paymentStatus === 'unpaid' ? 'unpaid' : 'paid';
+        if (notesInput) notesInput.value = tx.notes || '';
+
+        const cat = tx.businessCategory === 'laundry' ? 'laundry' : 'water';
+        const activeServices = (AppState.services || []).filter(s => s.category === cat && s.isActive !== false);
+
+        const existingItems = Array.isArray(tx.items) ? tx.items : [];
+        const matchedIndices = new Set();
+
+        const fields = [];
+        activeServices.forEach(s => {
+            const matchIdx = existingItems.findIndex((it, idx) =>
+                !matchedIndices.has(idx) &&
+                (it.serviceId === s.id || String(it.itemName || '').toLowerCase() === String(s.serviceName || '').toLowerCase())
+            );
+            let qty = '';
+            let unitRate = Number(s.defaultRate) || 0;
+            if (matchIdx !== -1) {
+                matchedIndices.add(matchIdx);
+                qty = existingItems[matchIdx].quantity;
+                if (existingItems[matchIdx].unitPrice !== undefined) {
+                    unitRate = Number(existingItems[matchIdx].unitPrice) || unitRate;
+                }
+            }
+            fields.push({
+                serviceId: s.id,
+                serviceName: s.serviceName,
+                unitRate,
+                unitLabel: s.unitLabel || (cat === 'laundry' ? 'load' : 'bottle'),
+                quantity: qty
+            });
+        });
+
+        existingItems.forEach((it, idx) => {
+            if (!matchedIndices.has(idx)) {
+                fields.push({
+                    serviceId: it.serviceId || 'extra_adhoc',
+                    serviceName: it.itemName || 'Item',
+                    unitRate: Number(it.unitPrice) || 0,
+                    unitLabel: 'unit',
+                    quantity: it.quantity || ''
+                });
+            }
+        });
+
+        let html = '';
+        fields.forEach((f, idx) => {
+            html += `
+                <div class="qty-field">
+                    <label for="edit-tx-qty-${idx}">${escapeHtml(f.serviceName)}</label>
+                    <span class="rate-hint">${formatPeso(f.unitRate)} / ${escapeHtml(f.unitLabel)}</span>
+                    <input type="number" id="edit-tx-qty-${idx}" class="edit-tx-qty-input"
+                           data-service-id="${escapeHtml(f.serviceId)}"
+                           data-service-name="${escapeHtml(f.serviceName)}"
+                           data-service-rate="${f.unitRate}"
+                           value="${f.quantity !== '' ? escapeHtml(String(f.quantity)) : ''}"
+                           min="0" step="1">
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+        container.querySelectorAll('.edit-tx-qty-input').forEach(inp => {
+            inp.addEventListener('input', calculateEditTransactionTotal);
+            inp.addEventListener('change', calculateEditTransactionTotal);
+        });
+
+        calculateEditTransactionTotal();
+        modal.style.display = 'flex';
+    }
+
+    function attachTransactionActionListeners(tbody, reloadCallback, txList = []) {
         tbody.querySelectorAll('.toggle-payment').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 const id = e.currentTarget.getAttribute('data-id');
                 const status = e.currentTarget.getAttribute('data-status');
                 await DataService.togglePaymentStatus(id, status);
                 reloadCallback();
+            });
+        });
+
+        tbody.querySelectorAll('.edit-tx-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const id = e.currentTarget.getAttribute('data-id');
+                let tx = (txList || []).find(t => t.id === id);
+                if (!tx) {
+                    const allTxs = await DataService.getTransactions();
+                    tx = (allTxs || []).find(t => t.id === id);
+                }
+                if (tx) {
+                    await openEditTransactionModal(tx, reloadCallback);
+                }
             });
         });
 
@@ -2287,7 +2471,7 @@
             if (waterTx.length === 0) {
                 repWaterTbody.innerHTML = `
                     <tr>
-                        <td colspan="6" style="text-align: center; padding: 24px; color: var(--text-secondary);">
+                        <td colspan="7" style="text-align: center; padding: 24px; color: var(--text-secondary);">
                             No water transactions recorded for ${formattedDate}.
                         </td>
                     </tr>
@@ -2300,6 +2484,12 @@
                     const statusBadge = t.paymentStatus === 'paid'
                         ? `<button type="button" class="badge badge-paid toggle-payment" data-id="${t.id}" data-status="paid" style="border:none; cursor:pointer;" title="Click to change payment status">Paid</button>`
                         : `<button type="button" class="badge badge-unpaid toggle-payment" data-id="${t.id}" data-status="unpaid" style="border:none; cursor:pointer;" title="Click to mark as paid">Unpaid</button>`;
+                    const actionBtns = `
+                        <div style="display: flex; gap: 4px; justify-content: center;">
+                            <button type="button" class="btn btn-secondary btn-sm edit-tx-btn" data-id="${escapeHtml(t.id)}">Edit</button>
+                            <button type="button" class="btn btn-danger btn-sm delete-tx-btn" data-id="${escapeHtml(t.id)}" data-code="${escapeHtml(t.transactionCode || '')}">Delete</button>
+                        </div>
+                    `;
 
                     wHtml += `
                         <tr>
@@ -2312,18 +2502,12 @@
                             <td style="font-size: 0.82rem; color: var(--text-secondary);">${escapeHtml(itemsText)}</td>
                             <td style="text-align: right; font-weight: 600; color: var(--navy);">${formatPeso(amt)}</td>
                             <td>${statusBadge}</td>
+                            <td class="no-print" style="text-align: center;">${actionBtns}</td>
                         </tr>
                     `;
                 });
                 repWaterTbody.innerHTML = wHtml;
-                repWaterTbody.querySelectorAll('.toggle-payment').forEach(btn => {
-                    btn.addEventListener('click', async (e) => {
-                        const id = e.currentTarget.getAttribute('data-id');
-                        const status = e.currentTarget.getAttribute('data-status');
-                        await DataService.togglePaymentStatus(id, status);
-                        renderReportsView();
-                    });
-                });
+                attachTransactionActionListeners(repWaterTbody, () => renderReportsView(), waterTx);
             }
         }
 
@@ -2357,7 +2541,7 @@
             if (laundryTx.length === 0) {
                 repLaundryTbody.innerHTML = `
                     <tr>
-                        <td colspan="6" style="text-align: center; padding: 24px; color: var(--text-secondary);">
+                        <td colspan="7" style="text-align: center; padding: 24px; color: var(--text-secondary);">
                             No laundry transactions recorded for ${formattedDate}.
                         </td>
                     </tr>
@@ -2370,6 +2554,12 @@
                     const statusBadge = t.paymentStatus === 'paid'
                         ? `<button type="button" class="badge badge-paid toggle-payment" data-id="${t.id}" data-status="paid" style="border:none; cursor:pointer;" title="Click to change payment status">Paid</button>`
                         : `<button type="button" class="badge badge-unpaid toggle-payment" data-id="${t.id}" data-status="unpaid" style="border:none; cursor:pointer;" title="Click to mark as paid">Unpaid</button>`;
+                    const actionBtns = `
+                        <div style="display: flex; gap: 4px; justify-content: center;">
+                            <button type="button" class="btn btn-secondary btn-sm edit-tx-btn" data-id="${escapeHtml(t.id)}">Edit</button>
+                            <button type="button" class="btn btn-danger btn-sm delete-tx-btn" data-id="${escapeHtml(t.id)}" data-code="${escapeHtml(t.transactionCode || '')}">Delete</button>
+                        </div>
+                    `;
 
                     lHtml += `
                         <tr>
@@ -2382,18 +2572,12 @@
                             <td style="font-size: 0.82rem; color: var(--text-secondary);">${escapeHtml(itemsText)}</td>
                             <td style="text-align: right; font-weight: 600; color: var(--navy);">${formatPeso(amt)}</td>
                             <td>${statusBadge}</td>
+                            <td class="no-print" style="text-align: center;">${actionBtns}</td>
                         </tr>
                     `;
                 });
                 repLaundryTbody.innerHTML = lHtml;
-                repLaundryTbody.querySelectorAll('.toggle-payment').forEach(btn => {
-                    btn.addEventListener('click', async (e) => {
-                        const id = e.currentTarget.getAttribute('data-id');
-                        const status = e.currentTarget.getAttribute('data-status');
-                        await DataService.togglePaymentStatus(id, status);
-                        renderReportsView();
-                    });
-                });
+                attachTransactionActionListeners(repLaundryTbody, () => renderReportsView(), laundryTx);
             }
         }
     }
@@ -3142,6 +3326,89 @@
                     renderLaundryFormFields();
                 } catch (err) {
                     showAlert(err.message || 'Error updating service.', 'danger');
+                }
+            });
+        }
+
+        // Edit Transaction Modal Controls (Staff & Owner)
+        const editTxModal = document.getElementById('edit-transaction-modal');
+        const closeEditTxBtn = document.getElementById('close-edit-tx-btn');
+        const cancelEditTxBtn = document.getElementById('cancel-edit-tx-btn');
+        const editTxForm = document.getElementById('edit-transaction-form');
+
+        const closeEditTxModal = () => {
+            if (editTxModal) editTxModal.style.display = 'none';
+            if (editTxForm) editTxForm.reset();
+        };
+
+        if (closeEditTxBtn) closeEditTxBtn.addEventListener('click', closeEditTxModal);
+        if (cancelEditTxBtn) cancelEditTxBtn.addEventListener('click', closeEditTxModal);
+
+        if (editTxForm) {
+            editTxForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const id = document.getElementById('edit-tx-id').value;
+                const cat = document.getElementById('edit-tx-category').value || 'water';
+                const date = document.getElementById('edit-tx-date').value || getTodayString();
+                const customer = document.getElementById('edit-tx-customer').value.trim();
+                const payStatus = document.getElementById('edit-tx-payment-status').value;
+                const notes = document.getElementById('edit-tx-notes').value.trim();
+
+                if (cat === 'laundry' && !customer) {
+                    showAlert('Please enter customer name.', 'danger');
+                    return;
+                }
+
+                const items = [];
+                let total = 0;
+
+                document.querySelectorAll('#edit-tx-services-container .edit-tx-qty-input').forEach(inp => {
+                    const qty = Number(inp.value) || 0;
+                    if (qty > 0) {
+                        const srvId = inp.getAttribute('data-service-id');
+                        const srvName = inp.getAttribute('data-service-name');
+                        const srvRate = Number(inp.getAttribute('data-service-rate')) || 0;
+                        const sub = qty * srvRate;
+                        items.push({
+                            serviceId: srvId,
+                            itemName: srvName,
+                            quantity: qty,
+                            unitPrice: srvRate,
+                            subtotal: sub
+                        });
+                        total += sub;
+                    }
+                });
+
+                if (items.length === 0) {
+                    showAlert('Please enter at least one quantity for the services/items.', 'danger');
+                    return;
+                }
+
+                const saveBtn = document.getElementById('save-edit-tx-btn');
+                if (saveBtn) saveBtn.disabled = true;
+
+                try {
+                    await DataService.updateTransaction(id, {
+                        transactionDate: date,
+                        customerName: customer || (cat === 'water' ? 'Walk-in Customer' : 'Customer'),
+                        totalAmount: total,
+                        paymentStatus: payStatus,
+                        items,
+                        notes
+                    });
+                    closeEditTxModal();
+                    showAlert('Transaction updated successfully.', 'success');
+                    if (typeof currentEditTxReloadCallback === 'function') {
+                        await currentEditTxReloadCallback();
+                    } else {
+                        await refreshActiveView();
+                    }
+                    renderCustomersView();
+                } catch (err) {
+                    showAlert(err.message || 'Error updating transaction.', 'danger');
+                } finally {
+                    if (saveBtn) saveBtn.disabled = false;
                 }
             });
         }

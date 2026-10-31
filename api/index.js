@@ -332,7 +332,7 @@ async function handleAction(req, config) {
     }
 
     const ownerOnly = new Set([
-        'deleteTransaction', 'deleteExpense', 'getUsers',
+        'deleteExpense', 'getUsers',
         'addService', 'updateService', 'deleteService', 'saveRates', 'createUser'
     ]);
     if (ownerOnly.has(action)) requireOwner(user);
@@ -429,6 +429,20 @@ async function handleAction(req, config) {
             const rows = await tableRequest(config, TABLES.transactions, {}, {
                 method: 'POST', body: record, prefer: 'return=representation'
             });
+            return transactionFromDb(rows[0]);
+        }
+        case 'updateTransaction': {
+            const row = {};
+            if (payload.transactionDate !== undefined) row.transaction_date = payload.transactionDate;
+            if (payload.customerName !== undefined) row.customer_name = payload.customerName || 'Walk-in Customer';
+            if (payload.totalAmount !== undefined) row.total_amount = Number(payload.totalAmount) || 0;
+            if (payload.paymentStatus !== undefined) row.payment_status = payload.paymentStatus === 'unpaid' ? 'unpaid' : 'paid';
+            if (payload.items !== undefined) row.items = Array.isArray(payload.items) ? payload.items : [];
+            if (payload.notes !== undefined) row.notes = payload.notes || '';
+            const rows = await tableRequest(config, TABLES.transactions, { id: `eq.${payload.id}` }, {
+                method: 'PATCH', body: row, prefer: 'return=representation'
+            });
+            if (!rows[0]) throw Object.assign(new Error('Transaction not found.'), { status: 404 });
             return transactionFromDb(rows[0]);
         }
         case 'deleteTransaction':
