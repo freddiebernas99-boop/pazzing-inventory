@@ -685,6 +685,8 @@ a:hover {
     justify-content: center;
     padding: 16px;
     backdrop-filter: blur(2px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 .modal-card {
     background: var(--surface);
@@ -695,6 +697,11 @@ a:hover {
     max-width: 460px;
     padding: 22px 20px;
     animation: modalFadeIn 0.15s ease-out;
+    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 @keyframes modalFadeIn {
     from { opacity: 0; transform: translateY(-8px); }
@@ -936,6 +943,21 @@ a:hover {
     }
     .btn-lg {
         min-height: 46px;
+    }
+    .modal-overlay {
+        padding: 12px 10px calc(16px + env(safe-area-inset-bottom, 16px)) 10px;
+        align-items: flex-start;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .modal-card {
+        padding: 16px 14px 24px 14px;
+        max-height: calc(100vh - 24px);
+        max-height: calc(100dvh - 24px);
+        margin: auto 0;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
     }
 }
 
