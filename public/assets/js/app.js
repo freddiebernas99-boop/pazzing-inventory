@@ -2035,6 +2035,26 @@
     }
 
     let currentEditTxReloadCallback = null;
+    let pendingConfirmAction = null;
+
+    function showConfirmModal({ title = 'Confirm Delete', message = 'Are you sure you want to delete this record?', confirmText = 'Delete', onConfirm = null }) {
+        const modal = document.getElementById('confirm-action-modal');
+        const titleEl = document.getElementById('confirm-modal-title');
+        const msgEl = document.getElementById('confirm-modal-message');
+        const acceptBtn = document.getElementById('accept-confirm-modal-btn');
+
+        if (!modal) {
+            if (typeof onConfirm === 'function') onConfirm();
+            return;
+        }
+
+        if (titleEl) titleEl.textContent = title;
+        if (msgEl) msgEl.textContent = message;
+        if (acceptBtn) acceptBtn.textContent = confirmText;
+
+        pendingConfirmAction = onConfirm;
+        modal.style.display = 'flex';
+    }
 
     function calculateEditTransactionTotal() {
         let total = 0;
@@ -2173,14 +2193,19 @@
         });
 
         tbody.querySelectorAll('.delete-tx-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
+            btn.addEventListener('click', (e) => {
                 const id = e.currentTarget.getAttribute('data-id');
                 const code = e.currentTarget.getAttribute('data-code');
-                if (confirm(`Delete transaction ${code}? This action cannot be undone.`)) {
-                    await DataService.deleteTransaction(id);
-                    showAlert(`Transaction ${code} removed.`, 'info');
-                    reloadCallback();
-                }
+                showConfirmModal({
+                    title: 'Delete Transaction',
+                    message: `Are you sure you want to delete transaction ${code || ''}? This action cannot be undone.`,
+                    confirmText: 'Delete Transaction',
+                    onConfirm: async () => {
+                        await DataService.deleteTransaction(id);
+                        showAlert(`Transaction ${code} removed.`, 'info');
+                        reloadCallback();
+                    }
+                });
             });
         });
     }
@@ -2269,14 +2294,19 @@
         if (dayTotalEl) dayTotalEl.textContent = `Total: ${formatPeso(totalExp)}`;
 
         tbody.querySelectorAll('.delete-exp-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
+            btn.addEventListener('click', (e) => {
                 const id = e.currentTarget.getAttribute('data-id');
                 const name = e.currentTarget.getAttribute('data-name');
-                if (confirm(`Delete expense "${name}"?`)) {
-                    await DataService.deleteExpense(id);
-                    showAlert(`Expense "${name}" removed.`, 'info');
-                    loadExpensesList();
-                }
+                showConfirmModal({
+                    title: 'Delete Expense',
+                    message: `Are you sure you want to delete expense "${name}"?`,
+                    confirmText: 'Delete Expense',
+                    onConfirm: async () => {
+                        await DataService.deleteExpense(id);
+                        showAlert(`Expense "${name}" removed.`, 'info');
+                        loadExpensesList();
+                    }
+                });
             });
         });
     }
@@ -2789,16 +2819,21 @@
 
         // Delete Service Button
         document.querySelectorAll('.delete-srv-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
+            btn.addEventListener('click', (e) => {
                 const id = e.currentTarget.getAttribute('data-id');
                 const name = e.currentTarget.getAttribute('data-name');
-                if (confirm(`Are you sure you want to remove or deactivate service "${name}"?`)) {
-                    const res = await DataService.deleteService(id);
-                    showAlert(res.message, res.deleted ? 'info' : 'warning');
-                    renderRatesView();
-                    renderWaterFormFields();
-                    renderLaundryFormFields();
-                }
+                showConfirmModal({
+                    title: 'Remove Service',
+                    message: `Are you sure you want to remove or deactivate service "${name}"?`,
+                    confirmText: 'Remove Service',
+                    onConfirm: async () => {
+                        const res = await DataService.deleteService(id);
+                        showAlert(res.message, res.deleted ? 'info' : 'warning');
+                        renderRatesView();
+                        renderWaterFormFields();
+                        renderLaundryFormFields();
+                    }
+                });
             });
         });
     }
@@ -3363,6 +3398,29 @@
                     showAlert(err.message || 'Error updating transaction.', 'danger');
                 } finally {
                     if (saveBtn) saveBtn.disabled = false;
+                }
+            });
+        }
+
+        // Custom In-App Confirmation Modal Controls
+        const confirmModal = document.getElementById('confirm-action-modal');
+        const closeConfirmBtn = document.getElementById('close-confirm-modal-btn');
+        const cancelConfirmBtn = document.getElementById('cancel-confirm-modal-btn');
+        const acceptConfirmBtn = document.getElementById('accept-confirm-modal-btn');
+
+        const closeConfirmModal = () => {
+            if (confirmModal) confirmModal.style.display = 'none';
+            pendingConfirmAction = null;
+        };
+
+        if (closeConfirmBtn) closeConfirmBtn.addEventListener('click', closeConfirmModal);
+        if (cancelConfirmBtn) cancelConfirmBtn.addEventListener('click', closeConfirmModal);
+        if (acceptConfirmBtn) {
+            acceptConfirmBtn.addEventListener('click', async () => {
+                const action = pendingConfirmAction;
+                closeConfirmModal();
+                if (typeof action === 'function') {
+                    await action();
                 }
             });
         }

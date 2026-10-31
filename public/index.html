@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Pazings Inventory & Sales Management</title>
-    <link rel="stylesheet" href="assets/css/style.css?v=20261031-2">
-    <link rel="stylesheet" href="assets/css/print.css?v=20261031-2" media="print">
+    <link rel="stylesheet" href="assets/css/style.css?v=20261031-3">
+    <link rel="stylesheet" href="assets/css/print.css?v=20261031-3" media="print">
 </head>
 <body>
 
@@ -1114,6 +1114,23 @@
         </div>
     </div>
 
+    <!-- Modal: Custom In-App Confirmation Dialog -->
+    <div id="confirm-action-modal" class="modal-overlay no-print" style="display: none;">
+        <div class="modal-card" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3 class="modal-title" id="confirm-modal-title">Confirm Delete</h3>
+                <button type="button" class="modal-close-btn" id="close-confirm-modal-btn">&times;</button>
+            </div>
+            <div style="padding: 4px 0 16px 0; color: var(--text-primary); font-size: 0.92rem; line-height: 1.5;" id="confirm-modal-message">
+                Are you sure you want to delete this record?
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" id="cancel-confirm-modal-btn">Cancel</button>
+                <button type="button" class="btn btn-danger" id="accept-confirm-modal-btn">Delete</button>
+            </div>
+        </div>
+    </div>
+
 </main>
 
 <datalist id="customer-datalist"></datalist>
@@ -1122,6 +1139,6 @@
     <p><strong>Pazings Management System</strong> &bull; <span id="footer-user-label">Guest</span> &bull; 2026</p>
 </footer>
 
-<script src="assets/js/app.js?v=20261031-2"></script>
+<script src="assets/js/app.js?v=20261031-3"></script>
 </body>
 </html>
